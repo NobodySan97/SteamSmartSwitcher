@@ -1,0 +1,32 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec
+
+# Build & Dist output
+build/
+dist/
+*.egg-info/
+*.exe
+
+# Local configuration & user data (sensitive)
+user_settings.json
+*.bak
+debug.log
+*.tmp
+
+# Cached images (will be downloaded automatically on client)
+icons/avatars/*.png
+icons/posters/*.jpg
+icons/capsules/*.jpg
+
+# Ignore downloaded update helper
+_apply_update.bat
+SteamSmartSwitcher_update.exe
+
+# OS / Editor files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
