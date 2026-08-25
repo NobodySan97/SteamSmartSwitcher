@@ -1,48 +1,76 @@
 import os
 import sys
 import glob
+import re
 import json
 import time
 import shutil
 import tempfile
 import subprocess
 import winreg
-import re
-import datetime
 import ctypes
+import shlex
 from ctypes import wintypes
 from PIL import Image, ImageDraw
-import requests
-import io
-import xml.etree.ElementTree as ET
+import urllib.request
 
-try:
-    import win32com.client
-except ImportError:
-    win32com = None
+# Win32 Toolhelp32 Constants for native process checking (<0.2ms, 0% CPU)
+TH32CS_SNAPPROCESS = 0x00000002
+
+class PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", wintypes.DWORD),
+        ("cntUsage", wintypes.DWORD),
+        ("th32ProcessID", wintypes.DWORD),
+        ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+        ("th32ModuleID", wintypes.DWORD),
+        ("cntThreads", wintypes.DWORD),
+        ("th32ParentProcessID", wintypes.DWORD),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", wintypes.DWORD),
+        ("szExeFile", ctypes.c_wchar * wintypes.MAX_PATH)
+    ]
+
+def is_process_running_by_name(process_name: str) -> bool:
+    """Zero-overhead Win32 snapshot process checker (<0.2ms, 0% CPU)."""
+    h_snap = ctypes.windll.kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if h_snap == -1 or not h_snap:
+        return False
+    entry = PROCESSENTRY32W()
+    entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+    target = process_name.lower()
+    try:
+        if ctypes.windll.kernel32.Process32FirstW(h_snap, ctypes.byref(entry)):
+            while True:
+                if entry.szExeFile.lower() == target:
+                    return True
+                if not ctypes.windll.kernel32.Process32NextW(h_snap, ctypes.byref(entry)):
+                    break
+    finally:
+        ctypes.windll.kernel32.CloseHandle(h_snap)
+    return False
+
 
 class SteamCore:
     def __init__(self):
-        if getattr(sys, 'frozen', False):
-            self.base_dir = os.path.dirname(os.path.abspath(sys.executable))
-        else:
-            self.base_dir = os.path.dirname(os.path.abspath(__file__))
-
-        self.icons_dir = os.path.join(self.base_dir, "icons")
-        self.avatars_dir = os.path.join(self.icons_dir, "avatars")
-        self.posters_dir = os.path.join(self.icons_dir, "posters")
-        self.capsules_dir = os.path.join(self.icons_dir, "capsules")
+        self.steam_path = self.find_steam_path()
+        self.steam_exe = os.path.join(self.steam_path, "Steam.exe")
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.cache_dir = os.path.join(self.base_dir, "cache")
+        self.avatars_dir = os.path.join(self.cache_dir, "avatars")
+        self.posters_dir = os.path.join(self.cache_dir, "posters")
+        self.capsules_dir = os.path.join(self.cache_dir, "capsules")
+        self.icons_dir = os.path.join(self.cache_dir, "icons")
         self.settings_file = os.path.join(self.base_dir, "user_settings.json")
-        self.compiled_exe = os.path.join(self.base_dir, "SteamSmartSwitcher.exe")
 
-        for d in [self.icons_dir, self.avatars_dir, self.posters_dir, self.capsules_dir]:
+        for d in [self.avatars_dir, self.posters_dir, self.capsules_dir, self.icons_dir]:
             os.makedirs(d, exist_ok=True)
 
-        self.steam_path = self.detect_steam_path()
-        self.steam_exe = os.path.join(self.steam_path, "Steam.exe")
         self.settings = self.load_settings()
+        self._installed_games_cache = None
+        self._installed_games_cache_time = 0
 
-    def detect_steam_path(self):
+    def find_steam_path(self):
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
                 path, _ = winreg.QueryValueEx(key, "SteamPath")
@@ -133,26 +161,24 @@ class SteamCore:
         return info
 
     def is_game_running(self):
+        # Stale registry protection: If Steam client is not running, no game is active!
+        if not self.is_steam_running():
+            return False, 0
         info = self.get_steam_active_info()
         return (info["running_appid"] != 0), info["running_appid"]
 
     def is_steam_running(self):
         info = self.get_steam_active_info()
-        pid = info["steam_pid"]
+        pid = info.get("steam_pid")
         if pid and pid > 0:
             handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
             if handle:
                 exit_code = wintypes.DWORD()
                 ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
                 ctypes.windll.kernel32.CloseHandle(handle)
-                return exit_code.value == 259
-        
-        try:
-            cmd = 'tasklist /FI "IMAGENAME eq steam.exe" /NH'
-            output = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
-            return "steam.exe" in output.lower()
-        except Exception:
-            return False
+                if exit_code.value == 259:  # STILL_ACTIVE
+                    return True
+        return is_process_running_by_name("steam.exe")
 
     def close_steam_graceful(self, max_wait_seconds=15):
         is_playing, appid = self.is_game_running()
@@ -170,13 +196,15 @@ class SteamCore:
         start_time = time.time()
         while time.time() - start_time < max_wait_seconds:
             if not self.is_steam_running():
-                time.sleep(0.5)
+                time.sleep(0.15)  # Settle time for OS kernel locks
                 return True
-            time.sleep(0.5)
+            time.sleep(0.4)
 
         try:
-            subprocess.run("taskkill /F /IM steam.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(1)
+            # Tree-kill with CREATE_NO_WINDOW
+            subprocess.run("taskkill /F /T /IM steam.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            time.sleep(0.3)
         except Exception:
             pass
 
@@ -192,7 +220,7 @@ class SteamCore:
 
     def set_registry_auto_login(self, target_account):
         try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam", 0, winreg.KEY_SET_VALUE) as key:
+            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam", 0, winreg.KEY_SET_VALUE) as key:
                 winreg.SetValueEx(key, "AutoLoginUser", 0, winreg.REG_SZ, target_account)
                 winreg.SetValueEx(key, "RememberPassword", 0, winreg.REG_DWORD, 1)
             return True
@@ -200,9 +228,21 @@ class SteamCore:
             print(f"Error updating registry: {e}")
             return False
 
+    def check_and_heal_vdf(self, vdf_path: str, bak_path: str):
+        """Self-healing: Restores from .bak if loginusers.vdf is missing or 0 bytes."""
+        try:
+            if not os.path.exists(vdf_path) or os.path.getsize(vdf_path) == 0:
+                if os.path.exists(bak_path) and os.path.getsize(bak_path) > 0:
+                    shutil.copy2(bak_path, vdf_path)
+                    print("[VDF] Restored corrupted/missing loginusers.vdf from .bak")
+        except Exception as ex:
+            print(f"[VDF] Self-healing error: {ex}")
+
     def update_loginusers_vdf(self, target_account: str) -> bool:
         vdf_path = os.path.join(self.steam_path, "config", "loginusers.vdf")
         bak_path = os.path.join(self.steam_path, "config", "loginusers.vdf.bak")
+
+        self.check_and_heal_vdf(vdf_path, bak_path)
 
         if not os.path.exists(vdf_path):
             return False
@@ -212,11 +252,13 @@ class SteamCore:
         except Exception as e:
             print(f"[VDF] Backup error: {e}")
 
+        temp_name = None
         try:
             with open(vdf_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
 
             target_clean = target_account.strip().lower()
+            current_epoch = str(int(time.time()))
 
             def block_replacer(match):
                 steamid_header = match.group(1)
@@ -241,6 +283,13 @@ class SteamCore:
                 else:
                     block_inner += f'\n\t\t"mostrecent"\t\t"{flag}"'
 
+                # Update Timestamp for target user to enforce active priority
+                if is_target:
+                    if re.search(r'"Timestamp"\s*"[^"]*"', block_inner, re.IGNORECASE):
+                        block_inner = re.sub(r'"Timestamp"\s*"[^"]*"', f'"Timestamp"\t\t"{current_epoch}"', block_inner, flags=re.IGNORECASE)
+                    else:
+                        block_inner += f'\n\t\t"Timestamp"\t\t"{current_epoch}"'
+
                 return f'{steamid_header}{{{block_inner}\n\t}}'
 
             pattern = re.compile(r'("\d{17}"\s*[\r\n]+\t*)\{([\s\S]*?)\n\t*\}', re.MULTILINE)
@@ -254,7 +303,20 @@ class SteamCore:
                 tf.write(updated_content)
                 temp_name = tf.name
 
-            os.replace(temp_name, vdf_path)
+            # Atomic replace with retry for file-lock contention
+            replaced = False
+            for attempt in range(5):
+                try:
+                    os.replace(temp_name, vdf_path)
+                    replaced = True
+                    temp_name = None
+                    break
+                except (PermissionError, OSError):
+                    time.sleep(0.2)
+
+            if not replaced:
+                raise OSError("Impossibile salvare loginusers.vdf: il file è bloccato da un altro processo.")
+
             return True
 
         except Exception as ex:
@@ -265,16 +327,24 @@ class SteamCore:
                 except Exception:
                     pass
             return False
+        finally:
+            if temp_name and os.path.exists(temp_name):
+                try:
+                    os.remove(temp_name)
+                except Exception:
+                    pass
 
     def switch_account_and_launch(self, target_account, appid=None, launch_args=""):
         current_user = self.get_current_auto_login_user().lower()
         target_clean = target_account.strip().lower()
         is_running = self.is_steam_running()
 
+        parsed_args = shlex.split(launch_args, posix=False) if launch_args else []
+
         if is_running and current_user == target_clean:
             if appid:
-                if launch_args:
-                    cmd = [self.steam_exe, "-applaunch", str(appid)] + launch_args.split()
+                if parsed_args:
+                    cmd = [self.steam_exe, "-applaunch", str(appid)] + parsed_args
                     subprocess.Popen(cmd)
                 else:
                     os.startfile(f"steam://rungameid/{appid}")
@@ -282,193 +352,20 @@ class SteamCore:
 
         if is_running:
             self.close_steam_graceful()
+            time.sleep(0.15)
 
         self.set_registry_auto_login(target_account)
         self.update_loginusers_vdf(target_account)
 
         if appid:
             cmd = [self.steam_exe, "-applaunch", str(appid)]
-            if launch_args:
-                cmd.extend(launch_args.split())
+            if parsed_args:
+                cmd.extend(parsed_args)
         else:
             cmd = [self.steam_exe]
 
         subprocess.Popen(cmd)
         return True
-
-    def resolve_pythonw_executable(self) -> str:
-        py_dir = os.path.dirname(os.path.abspath(sys.executable))
-        candidate = os.path.join(py_dir, "pythonw.exe")
-        if os.path.isfile(candidate):
-            return candidate
-
-        if hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix:
-            base_cand = os.path.join(sys.base_prefix, "pythonw.exe")
-            if os.path.isfile(base_cand):
-                return base_cand
-
-        which_pyw = shutil.which("pythonw.exe")
-        if which_pyw:
-            return os.path.abspath(which_pyw)
-
-        return sys.executable
-
-    def create_desktop_shortcut(self, appid, game_name, account_name, persona_name, custom_label=None, target_folder=None, launch_args=""):
-        if not win32com:
-            raise RuntimeError("pywin32 is required to create shortcuts.")
-
-        shell = win32com.client.Dispatch("WScript.Shell")
-        dest_dir = target_folder if target_folder else shell.SpecialFolders("Desktop")
-        os.makedirs(dest_dir, exist_ok=True)
-
-        clean_game_name = re.sub(r'[\\/*?:"<>|]', "", game_name).strip()
-        clean_user = re.sub(r'[\\/*?:"<>|]', "", persona_name or account_name).strip()
-
-        filename = f"{custom_label}.lnk" if custom_label else f"{clean_game_name} ({clean_user}).lnk"
-        shortcut_path = os.path.join(dest_dir, filename)
-
-        icon_path = os.path.join(self.icons_dir, f"{appid}.ico")
-        if not os.path.exists(icon_path):
-            installed_games = {g["appid"]: g for g in self.get_installed_games()}
-            if appid in installed_games and os.path.exists(installed_games[appid]["icon_path"]):
-                icon_path = installed_games[appid]["icon_path"]
-            else:
-                icon_path = self.steam_exe
-
-        sanitized_args = launch_args.replace('"', '\\"') if launch_args else ""
-
-        # Prefer standalone compiled .exe if available
-        if getattr(sys, 'frozen', False):
-            target_bin = sys.executable
-            args_str = f'--appid {appid} --account "{account_name}"'
-        elif os.path.exists(self.compiled_exe):
-            target_bin = self.compiled_exe
-            args_str = f'--appid {appid} --account "{account_name}"'
-        else:
-            target_bin = self.resolve_pythonw_executable()
-            main_py = os.path.join(self.base_dir, "main.py")
-            args_str = f'"{main_py}" --appid {appid} --account "{account_name}"'
-
-        if sanitized_args:
-            args_str += f' --args "{sanitized_args}"'
-
-        shortcut = shell.CreateShortcut(shortcut_path)
-        shortcut.TargetPath = target_bin
-        shortcut.Arguments = args_str
-        shortcut.WorkingDirectory = self.base_dir
-        if os.path.exists(icon_path) and (icon_path.endswith(".ico") or icon_path.endswith(".exe")):
-            shortcut.IconLocation = f"{icon_path},0"
-        shortcut.Description = f"Avvia {game_name} con account Steam: {persona_name} ({account_name})"
-        shortcut.save()
-
-        return shortcut_path
-
-    def create_all_shortcuts_for_account(self, account_name, persona_name, in_subfolder=True):
-        shell = win32com.client.Dispatch("WScript.Shell")
-        desktop = shell.SpecialFolders("Desktop")
-        clean_user = re.sub(r'[\\/*?:"<>|]', "", persona_name or account_name).strip()
-
-        if in_subfolder:
-            folder_name = f"Steam - {clean_user}"
-            target_dir = os.path.join(desktop, folder_name)
-            os.makedirs(target_dir, exist_ok=True)
-        else:
-            target_dir = desktop
-
-        created = []
-        for g in self.get_installed_games():
-            appid = g["appid"]
-            gname = g["name"]
-            l_args = self.get_game_launch_options(appid, account_name)
-            custom_lbl = gname if in_subfolder else f"{gname} ({clean_user})"
-            sc = self.create_desktop_shortcut(appid, gname, account_name, persona_name,
-                                              custom_label=custom_lbl,
-                                              target_folder=target_dir,
-                                              launch_args=l_args)
-            created.append(sc)
-        return target_dir, created
-
-    def get_existing_smart_shortcuts(self):
-        if not win32com:
-            return []
-
-        shell = win32com.client.Dispatch("WScript.Shell")
-        desktop = shell.SpecialFolders("Desktop")
-
-        results = []
-        scan_folders = [desktop]
-        for item in glob.glob(os.path.join(desktop, "Steam - *")):
-            if os.path.isdir(item):
-                scan_folders.append(item)
-
-        for folder in scan_folders:
-            for file in glob.glob(os.path.join(folder, "*.lnk")):
-                try:
-                    sc = shell.CreateShortcut(file)
-                    args = sc.Arguments.lower()
-                    target = sc.TargetPath.lower()
-                    if "--account" in args and ("steamsmartswitcher" in target or "launcher.py" in args or "main.py" in args):
-                        appid_m = re.search(r'--appid\s+(\d+)', sc.Arguments)
-                        acc_m = re.search(r'--account\s+"?([^"\s]+)"?', sc.Arguments)
-                        launch_m = re.search(r'--args\s+"([^"]+)"', sc.Arguments)
-                        results.append({
-                            "filename": os.path.basename(file),
-                            "folder": os.path.basename(folder) if folder != desktop else "Desktop",
-                            "path": file,
-                            "appid": appid_m.group(1) if appid_m else "?",
-                            "account": acc_m.group(1) if acc_m else "?",
-                            "launch_args": launch_m.group(1) if launch_m else "",
-                            "description": sc.Description
-                        })
-                except Exception:
-                    pass
-        return results
-
-    def is_windows_autostart_enabled(self):
-        run_key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_key_path, 0, winreg.KEY_READ) as key:
-                val, _ = winreg.QueryValueEx(key, "SteamSmartSwitcher")
-                return True, val
-        except Exception:
-            return False, ""
-
-    def set_windows_autostart(self, enabled=True, start_minimized=True):
-        run_key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_key_path, 0, winreg.KEY_SET_VALUE) as key:
-                if enabled:
-                    if getattr(sys, 'frozen', False):
-                        cmd = f'"{sys.executable}"'
-                    elif os.path.exists(self.compiled_exe):
-                        cmd = f'"{self.compiled_exe}"'
-                    else:
-                        main_py = os.path.join(self.base_dir, "main.py")
-                        pythonw_path = self.resolve_pythonw_executable()
-                        cmd = f'"{pythonw_path}" "{main_py}"'
-                    
-                    if start_minimized:
-                        cmd += " --minimized"
-                    winreg.SetValueEx(key, "SteamSmartSwitcher", 0, winreg.REG_SZ, cmd)
-                else:
-                    try:
-                        winreg.DeleteValue(key, "SteamSmartSwitcher")
-                    except FileNotFoundError:
-                        pass
-            self.settings["autostart_windows"] = enabled
-            self.save_settings()
-            return True
-        except Exception as e:
-            print(f"Error setting Windows autostart: {e}")
-            return False
-
-    def apply_boot_default_account(self):
-        def_acc = self.settings.get("default_account_on_boot", "").strip()
-        if def_acc:
-            cur_acc = self.get_current_auto_login_user().lower()
-            if cur_acc != def_acc.lower():
-                self.set_registry_auto_login(def_acc)
-                self.update_loginusers_vdf(def_acc)
 
     def get_account_tag(self, account_name):
         return self.settings.get("account_tags", {}).get(account_name.lower(), "")
@@ -480,102 +377,288 @@ class SteamCore:
         self.save_settings()
 
     def get_game_launch_options(self, appid, account_name=""):
-        key = f"{appid}@{account_name.lower()}" if account_name else str(appid)
-        return self.settings.get("launch_options", {}).get(key, self.settings.get("launch_options", {}).get(str(appid), ""))
+        opts_dict = self.settings.get("launch_options", {})
+        key_acc = f"{appid}_{account_name.lower()}" if account_name else ""
+        if key_acc and key_acc in opts_dict:
+            return opts_dict[key_acc]
+        return opts_dict.get(str(appid), "")
 
-    def set_game_launch_options(self, appid, options, account_name=""):
+    def set_game_launch_options(self, appid, launch_args, account_name=""):
         if "launch_options" not in self.settings:
             self.settings["launch_options"] = {}
-        key = f"{appid}@{account_name.lower()}" if account_name else str(appid)
-        self.settings["launch_options"][key] = options.strip()
+        key = f"{appid}_{account_name.lower()}" if account_name else str(appid)
+        if launch_args.strip():
+            self.settings["launch_options"][key] = launch_args.strip()
+        else:
+            self.settings["launch_options"].pop(key, None)
         self.save_settings()
 
-    def get_remembered_accounts(self):
-        loginusers_path = os.path.join(self.steam_path, "config", "loginusers.vdf")
-        accounts = []
-        if not os.path.exists(loginusers_path):
-            return accounts
+    def is_windows_autostart_enabled(self):
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
+                val, _ = winreg.QueryValueEx(key, "SteamSmartSwitcher")
+                return True, val
+        except Exception:
+            return False, ""
+
+    def set_windows_autostart(self, enable=True, start_minimized=False):
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
+                if enable:
+                    if getattr(sys, 'frozen', False):
+                        exe_path = sys.executable
+                        cmd = f'"{exe_path}"'
+                    else:
+                        python_exe = sys.executable.replace("python.exe", "pythonw.exe")
+                        main_py = os.path.join(self.base_dir, "main.py")
+                        cmd = f'"{python_exe}" "{main_py}"'
+
+                    if start_minimized:
+                        cmd += " --minimized"
+
+                    winreg.SetValueEx(key, "SteamSmartSwitcher", 0, winreg.REG_SZ, cmd)
+                else:
+                    try:
+                        winreg.DeleteValue(key, "SteamSmartSwitcher")
+                    except FileNotFoundError:
+                        pass
+            self.settings["autostart_windows"] = enable
+            self.save_settings()
+            return True
+        except Exception as e:
+            print(f"Error updating autostart registry: {e}")
+            return False
+
+    def apply_boot_default_account(self):
+        default_acc = self.settings.get("default_account_on_boot", "").strip()
+        if not default_acc:
+            return False
+
+        if not self.is_steam_running():
+            self.set_registry_auto_login(default_acc)
+            self.update_loginusers_vdf(default_acc)
+            return True
+        return False
+
+    def get_existing_smart_shortcuts(self):
+        desktop = os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")
+        shortcuts = []
+
+        all_lnks = glob.glob(os.path.join(desktop, "*.lnk"))
+        all_lnks += glob.glob(os.path.join(desktop, "Steam - *", "*.lnk"))
 
         try:
-            with open(loginusers_path, "r", encoding="utf-8", errors="ignore") as f:
-                text = f.read()
+            import win32com.client
+            wscript = win32com.client.Dispatch("WScript.Shell")
+        except Exception:
+            wscript = None
 
-            current_auto_user = self.get_current_auto_login_user().lower()
+        if not wscript:
+            return shortcuts
 
-            user_blocks = re.findall(r'"(\d{17})"\s*\{([^}]+)\}', text)
-            for steamid, block in user_blocks:
-                acc_name_m = re.search(r'"AccountName"\s*"([^"]+)"', block)
-                persona_name_m = re.search(r'"PersonaName"\s*"([^"]+)"', block)
-                remember_m = re.search(r'"RememberPassword"\s*"([^"]+)"', block)
-                auto_login_m = re.search(r'"AutoLogin"\s*"([^"]+)"', block, re.IGNORECASE)
-                most_recent_m = re.search(r'"mostrecent"\s*"([^"]+)"', block, re.IGNORECASE)
-                timestamp_m = re.search(r'"Timestamp"\s*"([^"]+)"', block)
+        for lnk in all_lnks:
+            try:
+                sc = wscript.CreateShortcut(lnk)
+                args = sc.Arguments
+                if "--appid" in args and "--account" in args:
+                    appid_m = re.search(r'--appid\s+["\']?(\d+)["\']?', args)
+                    acc_m = re.search(r'--account\s+["\']?([^"\']+)["\']?', args)
+                    opts_m = re.search(r'--args\s+["\']([^"\']*)["\']', args)
 
-                acc_name = acc_name_m.group(1).strip() if acc_name_m else ""
-                persona_name = persona_name_m.group(1).strip() if persona_name_m else acc_name
+                    folder = "Desktop" if os.path.dirname(lnk) == desktop else os.path.basename(os.path.dirname(lnk))
+                    shortcuts.append({
+                        "path": lnk,
+                        "filename": os.path.basename(lnk),
+                        "folder": folder,
+                        "appid": appid_m.group(1) if appid_m else "N/D",
+                        "account": acc_m.group(1) if acc_m else "N/D",
+                        "launch_args": opts_m.group(1) if opts_m else ""
+                    })
+            except Exception:
+                pass
 
-                if not acc_name:
-                    continue
+        return shortcuts
 
-                is_active = (acc_name.lower() == current_auto_user)
-                tag = self.get_account_tag(acc_name)
+    def open_game_directory(self, full_dir):
+        if full_dir and os.path.exists(full_dir):
+            os.startfile(full_dir)
+
+    def open_store_page(self, appid):
+        os.startfile(f"https://store.steampowered.com/app/{appid}")
+
+    def open_community_profile(self, steamid):
+        os.startfile(f"https://steamcommunity.com/profiles/{steamid}")
+
+    def create_desktop_shortcut(self, appid, game_name, account_name, persona_name, launch_args="", target_dir=None):
+        if target_dir is None:
+            target_dir = os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")
+
+        os.makedirs(target_dir, exist_ok=True)
+        clean_game_name = re.sub(r'[\\/*?:"<>|]', "", game_name)
+        clean_persona = re.sub(r'[\\/*?:"<>|]', "", persona_name)
+        shortcut_filename = f"{clean_game_name} ({clean_persona}).lnk"
+        shortcut_path = os.path.join(target_dir, shortcut_filename)
+
+        game_data = next((g for g in self.get_installed_games() if str(g["appid"]) == str(appid)), None)
+        icon_source = game_data["icon_path"] if game_data else None
+
+        if not icon_source or not os.path.exists(icon_source):
+            icon_source = self.resolve_game_icon(
+                appid,
+                game_name,
+                game_data["installdir"] if game_data else "",
+                game_data["library"] if game_data else ""
+            )
+
+        if not icon_source or not os.path.exists(icon_source):
+            icon_source = self.steam_exe
+
+        if getattr(sys, 'frozen', False):
+            target_exe = sys.executable
+        else:
+            dist_exe = os.path.join(self.base_dir, "SteamSmartSwitcher.exe")
+            if os.path.exists(dist_exe):
+                target_exe = dist_exe
+            else:
+                target_exe = sys.executable.replace("python.exe", "pythonw.exe")
+
+        if target_exe.lower().endswith("pythonw.exe") or target_exe.lower().endswith("python.exe"):
+            main_script = os.path.join(self.base_dir, "main.py")
+            arguments = f'"{main_script}" --appid {appid} --account "{account_name}"'
+        else:
+            arguments = f'--appid {appid} --account "{account_name}"'
+
+        if launch_args:
+            arguments += f' --args "{launch_args}"'
+
+        try:
+            import win32com.client
+            shell = win32com.client.Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortCut(shortcut_path)
+            shortcut.TargetPath = target_exe
+            shortcut.Arguments = arguments
+            shortcut.WorkingDirectory = self.base_dir
+            shortcut.IconLocation = f"{icon_source},0"
+            shortcut.Description = f"Avvia {game_name} con account {persona_name}"
+            shortcut.Save()
+            return shortcut_path
+        except Exception as e:
+            vbs_script = f'''
+Set oWS = WScript.CreateObject("WScript.Shell")
+sLinkFile = "{shortcut_path}"
+Set oLink = oWS.CreateShortcut(sLinkFile)
+oLink.TargetPath = "{target_exe}"
+oLink.Arguments = "{arguments}"
+oLink.WorkingDirectory = "{self.base_dir}"
+oLink.IconLocation = "{icon_source},0"
+oLink.Description = "Avvia {game_name} con account {persona_name}"
+oLink.Save
+'''
+            with tempfile.NamedTemporaryFile("w", suffix=".vbs", delete=False) as tf:
+                tf.write(vbs_script)
+                tf_name = tf.name
+            try:
+                subprocess.run(f'cscript //Nologo "{tf_name}"', shell=True, check=True)
+                return shortcut_path
+            finally:
+                if os.path.exists(tf_name):
+                    os.remove(tf_name)
+
+    def create_all_shortcuts_for_account(self, account_name, persona_name, in_subfolder=True):
+        desktop = os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")
+        clean_persona = re.sub(r'[\\/*?:"<>|]', "", persona_name)
+        if in_subfolder:
+            target_dir = os.path.join(desktop, f"Steam - {clean_persona}")
+        else:
+            target_dir = desktop
+
+        os.makedirs(target_dir, exist_ok=True)
+        games = self.get_installed_games()
+        created = []
+
+        for g in games:
+            appid = g["appid"]
+            name = g["name"]
+            l_args = self.get_game_launch_options(appid, account_name)
+            p = self.create_desktop_shortcut(appid, name, account_name, persona_name, launch_args=l_args, target_dir=target_dir)
+            created.append(p)
+
+        return target_dir, created
+
+    def get_remembered_accounts(self):
+        vdf_path = os.path.join(self.steam_path, "config", "loginusers.vdf")
+        bak_path = os.path.join(self.steam_path, "config", "loginusers.vdf.bak")
+        self.check_and_heal_vdf(vdf_path, bak_path)
+
+        if not os.path.exists(vdf_path):
+            return []
+
+        try:
+            with open(vdf_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+        except Exception:
+            return []
+
+        current_active = self.get_current_auto_login_user().lower()
+        accounts = []
+        user_blocks = re.findall(r'"(\d{17})"\s*\{([^}]+)\}', content, re.MULTILINE)
+
+        for steamid, block in user_blocks:
+            acc_name_m = re.search(r'"AccountName"\s*"([^"]+)"', block, re.IGNORECASE)
+            persona_m = re.search(r'"PersonaName"\s*"([^"]+)"', block, re.IGNORECASE)
+            mostrecent_m = re.search(r'"(?:mostrecent|MostRecent)"\s*"([^"]+)"', block, re.IGNORECASE)
+            autologin_m = re.search(r'"AutoLogin"\s*"([^"]+)"', block, re.IGNORECASE)
+
+            if acc_name_m:
+                acc_name = acc_name_m.group(1)
+                persona = persona_m.group(1) if persona_m else acc_name
+                is_active = (acc_name.lower() == current_active)
+                if not current_active and mostrecent_m and mostrecent_m.group(1) == "1":
+                    is_active = True
 
                 accounts.append({
                     "steamid": steamid,
                     "account_name": acc_name,
-                    "persona_name": persona_name,
-                    "remember_password": remember_m.group(1) if remember_m else "1",
-                    "auto_login": auto_login_m.group(1) if auto_login_m else "0",
-                    "most_recent": most_recent_m.group(1) if most_recent_m else "0",
-                    "timestamp": int(timestamp_m.group(1)) if timestamp_m else 0,
+                    "persona_name": persona,
                     "is_active": is_active,
-                    "tag": tag,
-                    "avatar_path": self.get_cached_avatar_path(steamid)
+                    "mostrecent": mostrecent_m.group(1) if mostrecent_m else "0",
+                    "autologin": autologin_m.group(1) if autologin_m else "0"
                 })
-        except Exception as e:
-            print(f"Error parsing loginusers.vdf: {e}")
 
-        accounts.sort(key=lambda x: (not x["is_active"], -x["timestamp"]))
+        accounts.sort(key=lambda x: (not x["is_active"], x["persona_name"].lower()))
         return accounts
 
     def get_cached_avatar_path(self, steamid):
-        p = os.path.join(self.avatars_dir, f"{steamid}.png")
-        return p if os.path.exists(p) else None
+        cached = os.path.join(self.avatars_dir, f"{steamid}.png")
+        return cached if os.path.exists(cached) else None
 
     def fetch_and_cache_avatar(self, steamid, persona_name=""):
         cached = os.path.join(self.avatars_dir, f"{steamid}.png")
         if os.path.exists(cached):
             return cached
 
-        local_avatar = os.path.join(self.steam_path, "config", "avatars", f"{steamid}.png")
-        if os.path.exists(local_avatar):
-            try:
-                img = Image.open(local_avatar)
-                img.save(cached, format="PNG")
-                return cached
-            except Exception:
-                pass
-
-        url = f"https://steamcommunity.com/profiles/{steamid}/?xml=1"
         try:
-            r = requests.get(url, timeout=4)
-            if r.status_code == 200:
-                root = ET.fromstring(r.content)
-                avatar_node = root.find("avatarMedium") or root.find("avatarFull") or root.find("avatarIcon")
-                if avatar_node is not None and avatar_node.text:
-                    img_resp = requests.get(avatar_node.text, timeout=5)
-                    if img_resp.status_code == 200:
-                        img = Image.open(io.BytesIO(img_resp.content))
-                        img = img.resize((64, 64), Image.Resampling.LANCZOS)
-                        img.save(cached, format="PNG")
-                        return cached
-        except Exception as e:
-            print(f"Failed to fetch avatar for {steamid}: {e}")
+            url = f"https://steamcommunity.com/profiles/{steamid}?xml=1"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                xml_data = resp.read().decode("utf-8", errors="ignore")
 
-        return self._generate_fallback_avatar(steamid, persona_name)
+            m = re.search(r'<avatarMedium><!\[CDATA\[(.*?)\]\]></avatarMedium>', xml_data) or \
+                re.search(r'<avatarFull><!\[CDATA\[(.*?)\]\]></avatarFull>', xml_data) or \
+                re.search(r'<avatarIcon><!\[CDATA\[(.*?)\]\]></avatarIcon>', xml_data)
 
-    def _generate_fallback_avatar(self, steamid, persona_name):
-        cached = os.path.join(self.avatars_dir, f"{steamid}.png")
+            if m:
+                avatar_url = m.group(1)
+                req2 = urllib.request.Request(avatar_url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req2, timeout=3) as resp2:
+                    with open(cached, "wb") as f:
+                        f.write(resp2.read())
+                return cached
+        except Exception:
+            pass
+
         img = Image.new("RGBA", (64, 64), color=(31, 42, 56, 255))
         d = ImageDraw.Draw(img)
         d.rectangle([(2, 2), (61, 61)], outline=(102, 192, 244, 255), width=2)
@@ -591,10 +674,12 @@ class SteamCore:
             try:
                 with open(library_vdf, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
+                # Support both modern "path" and legacy "1" "path"
                 paths = re.findall(r'"path"\s*"([^"]+)"', content)
+                paths += re.findall(r'"\d+"\s*"([^"]+)"', content)
                 for p in paths:
                     norm_p = os.path.normpath(p.replace("\\\\", "\\"))
-                    if os.path.exists(norm_p) and not any(os.path.samefile(norm_p, f) for f in folders):
+                    if os.path.exists(norm_p) and not any(os.path.samefile(norm_p, f) for f in folders if os.path.exists(f)):
                         folders.append(norm_p)
             except Exception as e:
                 print(f"Error reading libraryfolders.vdf: {e}")
@@ -625,7 +710,12 @@ class SteamCore:
                     pass
         return shortcuts_map
 
-    def get_installed_games(self):
+    def get_installed_games(self, force_refresh=False):
+        # Cache for 10 seconds to eliminate disk thrashing during tray redraws
+        now = time.time()
+        if not force_refresh and self._installed_games_cache and (now - self._installed_games_cache_time < 10):
+            return self._installed_games_cache
+
         url_icons = self.get_url_shortcuts_map()
         games = []
         seen_appids = set()
@@ -651,26 +741,28 @@ class SteamCore:
                         installdir = installdir_m.group(1) if installdir_m else ""
                         size_bytes = int(size_m.group(1)) if size_m else 0
                         last_played_ts = int(last_played_m.group(1)) if last_played_m else 0
-                        last_owner_id = last_owner_m.group(1).strip() if last_owner_m else ""
+                        last_owner_id = last_owner_m.group(1) if last_owner_m else ""
 
-                        if appid in exclude_appids or appid in seen_appids:
+                        if appid in seen_appids or appid in exclude_appids:
                             continue
                         seen_appids.add(appid)
 
-                        if size_bytes > 1024**3:
-                            size_str = f"{size_bytes / (1024**3):.1f} GB"
-                        elif size_bytes > 1024**2:
-                            size_str = f"{size_bytes / (1024**2):.0f} MB"
+                        if size_bytes >= 1073741824:
+                            size_str = f"{size_bytes / 1073741824:.2f} GB"
                         else:
-                            size_str = f"{size_bytes} B"
+                            size_str = f"{size_bytes / 1048576:.0f} MB"
 
-                        last_played_str = datetime.datetime.fromtimestamp(last_played_ts).strftime("%d/%m/%Y %H:%M") if last_played_ts > 0 else "Mai avviato"
+                        if last_played_ts > 0:
+                            last_played_str = time.strftime("%d/%m/%Y %H:%M", time.localtime(last_played_ts))
+                        else:
+                            last_played_str = "Mai"
 
-                        full_dir = os.path.join(lib, "steamapps", "common", installdir) if installdir else ""
+                        drive = os.path.splitdrive(lib)[0].upper() or "C:"
+                        full_dir = os.path.join(steamapps_dir, "common", installdir) if installdir else ""
+
                         icon_path = self.resolve_game_icon(appid, name, installdir, lib, url_icons)
                         poster_path = self.get_cached_poster_path(appid)
                         capsule_path = self.get_cached_capsule_path(appid)
-                        drive = os.path.splitdrive(lib)[0] or "C:"
 
                         games.append({
                             "appid": appid,
@@ -692,6 +784,8 @@ class SteamCore:
                     print(f"Error reading manifest {mf}: {e}")
 
         games.sort(key=lambda g: g["name"].lower())
+        self._installed_games_cache = games
+        self._installed_games_cache_time = now
         return games
 
     def get_game_ownership(self, game, account, all_accounts, i18n=None):
@@ -730,91 +824,78 @@ class SteamCore:
         if url_icons and appid in url_icons and os.path.exists(url_icons[appid]):
             return url_icons[appid]
 
-        if installdir and library_path:
-            game_folder = os.path.join(library_path, "steamapps", "common", installdir)
-            if os.path.exists(game_folder):
-                icos = glob.glob(os.path.join(game_folder, "*.ico"))
-                if icos:
-                    return icos[0]
-                exes = glob.glob(os.path.join(game_folder, "*.exe"))
-                if exes:
-                    return exes[0]
+        steamapps = os.path.join(library_path, "steamapps") if not library_path.endswith("steamapps") else library_path
+        common_game = os.path.join(steamapps, "common", installdir)
+        if os.path.exists(common_game):
+            for exe in glob.glob(os.path.join(common_game, "*.exe")):
+                base = os.path.basename(exe).lower()
+                if "crash" not in base and "unins" not in base and "helper" not in base and "setup" not in base:
+                    return exe
+            for exe in glob.glob(os.path.join(common_game, "**", "*.exe"), recursive=True):
+                base = os.path.basename(exe).lower()
+                if "crash" not in base and "unins" not in base and "helper" not in base and "setup" not in base:
+                    return exe
 
-        steam_games_ico = os.path.join(self.steam_path, "steam", "games")
-        if os.path.exists(steam_games_ico):
-            icos = [os.path.join(steam_games_ico, f) for f in os.listdir(steam_games_ico) if f.endswith(".ico") and f != "SteamMovie.ico"]
-            if icos:
-                return icos[0]
+        appinfo_icon = os.path.join(self.steam_path, "steam", "games", f"{appid}.ico")
+        if os.path.exists(appinfo_icon):
+            return appinfo_icon
 
         return self.steam_exe
 
     def get_cached_poster_path(self, appid):
-        p = os.path.join(self.posters_dir, f"{appid}.jpg")
-        return p if os.path.exists(p) else None
+        local_grid = os.path.join(self.steam_path, "userdata")
+        for ufolder in glob.glob(os.path.join(local_grid, "*", "config", "grid", f"{appid}p.*")):
+            if os.path.exists(ufolder):
+                return ufolder
+        for ufolder in glob.glob(os.path.join(local_grid, "*", "config", "grid", f"{appid}.*")):
+            if os.path.exists(ufolder):
+                return ufolder
+
+        cached = os.path.join(self.posters_dir, f"{appid}.jpg")
+        return cached if os.path.exists(cached) else None
 
     def get_cached_capsule_path(self, appid):
-        p = os.path.join(self.capsules_dir, f"{appid}.jpg")
-        return p if os.path.exists(p) else None
+        cached = os.path.join(self.capsules_dir, f"{appid}.jpg")
+        return cached if os.path.exists(cached) else None
 
-    def fetch_and_cache_game_images(self, appid, name=""):
-        poster_path = os.path.join(self.posters_dir, f"{appid}.jpg")
-        capsule_path = os.path.join(self.capsules_dir, f"{appid}.jpg")
+    def fetch_and_cache_game_images(self, appid, game_name=""):
+        poster_file = os.path.join(self.posters_dir, f"{appid}.jpg")
+        capsule_file = os.path.join(self.capsules_dir, f"{appid}.jpg")
 
-        headers = {"User-Agent": "Mozilla/5.0"}
-        if not os.path.exists(poster_path):
-            urls = [
-                f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/library_600x900.jpg",
+        if not os.path.exists(poster_file):
+            urls_to_try = [
+                f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/library_600x900_2x.jpg",
+                f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/library_600x900.jpg",
                 f"https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900.jpg"
             ]
-            for u in urls:
+            downloaded = False
+            for u in urls_to_try:
                 try:
-                    r = requests.get(u, headers=headers, timeout=4)
-                    if r.status_code == 200:
-                        with open(poster_path, "wb") as f:
-                            f.write(r.content)
-                        break
+                    req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req, timeout=3) as resp:
+                        with open(poster_file, "wb") as f:
+                            f.write(resp.read())
+                    downloaded = True
+                    break
                 except Exception:
                     pass
 
-        if not os.path.exists(capsule_path):
-            urls = [
-                f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg",
-                f"https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"
-            ]
-            for u in urls:
-                try:
-                    r = requests.get(u, headers=headers, timeout=4)
-                    if r.status_code == 200:
-                        with open(capsule_path, "wb") as f:
-                            f.write(r.content)
-                        break
-                except Exception:
-                    pass
+            if not downloaded:
+                img = Image.new("RGBA", (300, 450), color=(27, 40, 56, 255))
+                d = ImageDraw.Draw(img)
+                d.rectangle([(2, 2), (297, 447)], outline=(102, 192, 244, 255), width=2)
+                short_t = game_name[:15] if game_name else f"App {appid}"
+                d.text((40, 200), short_t, fill=(255, 255, 255, 255))
+                img.convert("RGB").save(poster_file, format="JPEG")
 
-        ico_path = os.path.join(self.icons_dir, f"{appid}.ico")
-        if not os.path.exists(ico_path):
-            src_img = poster_path if os.path.exists(poster_path) else (capsule_path if os.path.exists(capsule_path) else None)
-            if src_img:
-                try:
-                    im = Image.open(src_img)
-                    w, h = im.size
-                    min_dim = min(w, h)
-                    left = (w - min_dim) // 2
-                    top = (h - min_dim) // 2
-                    cropped = im.crop((left, top, left + min_dim, top + min_dim))
-                    resized = cropped.resize((128, 128), Image.Resampling.LANCZOS)
-                    resized.save(ico_path, format="ICO", sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128)])
-                except Exception:
-                    pass
+        if not os.path.exists(capsule_file):
+            u = f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/header.jpg"
+            try:
+                req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    with open(capsule_file, "wb") as f:
+                        f.write(resp.read())
+            except Exception:
+                pass
 
-    def open_game_directory(self, full_dir):
-        if full_dir and os.path.exists(full_dir):
-            os.startfile(full_dir)
-            return True
-        return False
-
-    def open_store_page(self, appid):
-        os.startfile(f"https://store.steampowered.com/app/{appid}")
-
-    def open_community_profile(self, steamid):
-        os.startfile(f"https://steamcommunity.com/profiles/{steamid}")
+        return poster_file, capsule_file

@@ -25,6 +25,51 @@ from updater import Updater, APP_VERSION, DEFAULT_GITHUB_REPO
 from i18n import I18n
 from themes import get_theme, THEMES
 
+WAIT_OBJECT_0 = 0x00000000
+WAIT_ABANDONED = 0x00000080
+WAIT_TIMEOUT = 0x00000102
+ERROR_ACCESS_DENIED = 5
+
+class WindowsNamedMutex:
+    def __init__(self, name="SteamSmartLauncher_Switch_Lock", timeout_ms=15000):
+        self.primary_name = f"Local\\{name}" if not name.startswith(("Global\\", "Local\\")) else name
+        self.fallback_name = f"Local\\{name.split('\\')[-1]}"
+        self.timeout_ms = timeout_ms
+        self.handle = None
+        self.acquired = False
+
+    def __enter__(self):
+        k32 = ctypes.windll.kernel32
+        self.handle = k32.CreateMutexW(None, False, self.primary_name)
+        if not self.handle and k32.GetLastError() == ERROR_ACCESS_DENIED:
+            self.handle = k32.CreateMutexW(None, False, self.fallback_name)
+
+        if not self.handle:
+            raise RuntimeError(f"Impossibile creare Mutex Windows: WinError {k32.GetLastError()}")
+
+        wait_res = k32.WaitForSingleObject(self.handle, self.timeout_ms)
+        if wait_res in (WAIT_OBJECT_0, WAIT_ABANDONED):
+            self.acquired = True
+            return self
+        elif wait_res == WAIT_TIMEOUT:
+            k32.CloseHandle(self.handle)
+            self.handle = None
+            raise TimeoutError("Operazione bloccata: un altro cambio account è attualmente in corso.")
+        else:
+            k32.CloseHandle(self.handle)
+            self.handle = None
+            raise RuntimeError(f"Attesa Mutex fallita con codice: 0x{wait_res:X}")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.handle:
+            k32 = ctypes.windll.kernel32
+            if self.acquired:
+                k32.ReleaseMutex(self.handle)
+                self.acquired = False
+            k32.CloseHandle(self.handle)
+            self.handle = None
+
+
 class ToastNotification(tk.Frame):
     def __init__(self, parent, text, theme, icon="✅", duration_ms=2800):
         super().__init__(parent, bg=theme["header"], highlightthickness=1,
@@ -37,6 +82,7 @@ class ToastNotification(tk.Frame):
 
     def _fade_out(self):
         self.destroy()
+
 
 class ModernCard(tk.Frame):
     def __init__(self, parent, theme, on_click=None, **kwargs):
@@ -114,6 +160,8 @@ class SteamSmartLauncherApp:
         self.filtered_games = []
 
         self._search_timer = None
+        self._resize_timer = None
+        self._suppress_launch_opts_trace = False
         self.grid_cols = 4
 
         self.avatar_images = {}
@@ -294,7 +342,7 @@ class SteamSmartLauncherApp:
 
         self.games_scroll_container = tk.Frame(self.right_col, bg=self.theme["bg"])
         self.games_scroll_container.pack(fill=tk.BOTH, expand=True)
-        self.games_container = self._create_scrollable_container(self.games_scroll_container)
+        self.games_container = self._create_scrollable_container(self.games_scroll_container, is_games_container=True)
 
         # Selected Game Hero Details Panel
         self.game_details_box = tk.Frame(self.right_col, bg=self.theme["card"], highlightthickness=1, highlightbackground=self.theme["border"], padx=12, pady=10)
@@ -388,7 +436,7 @@ class SteamSmartLauncherApp:
         self.lbl_status = tk.Label(self.root, text=self.i18n("status_ready", version=APP_VERSION), font=("Segoe UI", 8), fg=self.theme["text_muted"], bg=self.theme["bg"], anchor="w", padx=20, pady=2)
         self.lbl_status.pack(fill=tk.X, side=tk.BOTTOM)
 
-    def _create_scrollable_container(self, parent):
+    def _create_scrollable_container(self, parent, is_games_container=False):
         container = tk.Frame(parent, bg=self.theme["bg"])
         container.pack(fill=tk.BOTH, expand=True)
 
@@ -399,21 +447,25 @@ class SteamSmartLauncherApp:
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
 
-        def _configure_canvas_width(event):
+        def _on_canvas_configure(event):
             canvas.itemconfig(canvas_window, width=event.width)
-            if self.view_mode == "grid":
+            if is_games_container and self.view_mode == "grid":
                 cols = max(2, event.width // 140)
                 if cols != self.grid_cols:
                     self.grid_cols = cols
-                    self._render_games_grid()
+                    if self._resize_timer:
+                        self.root.after_cancel(self._resize_timer)
+                    self._resize_timer = self.root.after(100, self._render_games_grid)
 
-        canvas.bind("<Configure>", _configure_canvas_width)
+        canvas.bind("<Configure>", _on_canvas_configure)
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        def _on_mousewheel(event):
+        def _on_wheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        # Scoped mousewheel binding to avoid global collisions
+        container.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_wheel))
+        container.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -470,7 +522,7 @@ class SteamSmartLauncherApp:
         active_user = self.core.get_current_auto_login_user()
 
         self.accounts = self.core.get_remembered_accounts()
-        self.games = self.core.get_installed_games()
+        self.games = self.core.get_installed_games(force_refresh=True)
         self.filtered_games = list(self.games)
 
         active_acc_obj = next((a for a in self.accounts if a["account_name"].lower() == active_user.lower()), None)
@@ -542,8 +594,14 @@ class SteamSmartLauncherApp:
             lbl_dl_status.pack(padx=20, pady=(0, 8))
 
             def on_progress(pct, downloaded, total):
-                progress_var.set(pct)
-                lbl_dl_status.config(text=f"Download: {downloaded/(1024*1024):.1f} MB / {total/(1024*1024):.1f} MB ({pct}%)")
+                dlg.after(0, lambda: _apply_progress(pct, downloaded, total))
+
+            def _apply_progress(pct, downloaded, total):
+                try:
+                    progress_var.set(pct)
+                    lbl_dl_status.config(text=f"Download: {downloaded/(1024*1024):.1f} MB / {total/(1024*1024):.1f} MB ({pct}%)")
+                except Exception:
+                    pass
 
             def run():
                 try:
@@ -582,11 +640,15 @@ class SteamSmartLauncherApp:
                 pass
 
     def _async_fetch_assets(self):
+        acc_updated = False
         for acc in self.accounts:
             steamid = acc["steamid"]
             if not self.core.get_cached_avatar_path(steamid):
                 self.core.fetch_and_cache_avatar(steamid, acc["persona_name"])
-                self.root.after(0, self._render_accounts)
+                acc_updated = True
+
+        if acc_updated:
+            self.root.after(0, self._render_accounts)
 
         for g in self.games:
             appid = g["appid"]
@@ -703,6 +765,10 @@ class SteamSmartLauncherApp:
             self._render_games_list()
 
     def _render_games_grid(self):
+        for widget in self.games_container.winfo_children():
+            widget.destroy()
+        self.game_cards.clear()
+
         grid_frame = tk.Frame(self.games_container, bg=self.theme["bg"])
         grid_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -875,7 +941,11 @@ class SteamSmartLauncherApp:
 
             acc_name = self.selected_account["account_name"] if self.selected_account else ""
             opts = self.core.get_game_launch_options(g["appid"], acc_name)
+            
+            # Suppress trace callback to prevent disk write on mere selection
+            self._suppress_launch_opts_trace = True
             self.launch_opts_var.set(opts)
+            self._suppress_launch_opts_trace = False
         else:
             self.btn_fav_hero.config(text="☆", fg=self.theme["text_muted"])
             self.lbl_selected_game_name.config(text=self.i18n("no_game_selected"))
@@ -899,6 +969,8 @@ class SteamSmartLauncherApp:
             self.btn_launch_now.config(state=tk.DISABLED)
 
     def _on_launch_opts_changed(self, *args):
+        if getattr(self, '_suppress_launch_opts_trace', False):
+            return
         if self.selected_game:
             opts = self.launch_opts_var.get().strip()
             acc_name = self.selected_account["account_name"] if self.selected_account else ""
@@ -925,7 +997,7 @@ class SteamSmartLauncherApp:
         def run():
             try:
                 self.core.switch_account_and_launch(account_name, appid=None)
-                self.root.after(2000, self.refresh_data)
+                self.root.after(1500, self.refresh_data)
                 self.root.after(0, lambda: self.show_toast(self.i18n("toast_switch_done", account=account_name)))
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("Switch Error", str(e)))
@@ -995,7 +1067,6 @@ class SteamSmartLauncherApp:
         def run():
             try:
                 self.core.switch_account_and_launch(account_name, appid, launch_args=launch_args)
-                self.root.after(3000, self.refresh_data)
                 self.root.after(0, lambda: self.show_toast(self.i18n("toast_launching", game=game_name, persona=persona_name), icon="🚀"))
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("Launch Error", str(e)))
@@ -1281,17 +1352,32 @@ class SteamSmartLauncherApp:
         self.refresh_data()
 
     def _trim_memory(self):
-        """Releases image buffers, runs garbage collection, and trims working set in Windows."""
+        """Deep sleep memory trimmer: frees PIL objects, clears widgets, and flushes working set."""
         self.avatar_images.clear()
         self.poster_images.clear()
         self.capsule_images.clear()
         self.icon_images.clear()
+
+        # Clear widget references
+        for w in self.accounts_container.winfo_children():
+            w.destroy()
+        for w in self.games_container.winfo_children():
+            w.destroy()
+        self.account_cards.clear()
+        self.game_cards.clear()
+
         gc.collect()
+
         try:
-            # Native Win32 call: empties working set to pagefile/standby, dropping RAM to <10MB
-            ctypes.windll.kernel32.SetProcessWorkingSetSize(
-                ctypes.windll.kernel32.GetCurrentProcess(), -1, -1
-            )
+            h_proc = ctypes.windll.kernel32.GetCurrentProcess()
+            if hasattr(ctypes.windll.psapi, 'EmptyWorkingSet'):
+                ctypes.windll.psapi.EmptyWorkingSet.argtypes = [wintypes.HANDLE]
+                ctypes.windll.psapi.EmptyWorkingSet(h_proc)
+            else:
+                set_ws = ctypes.windll.kernel32.SetProcessWorkingSetSize
+                set_ws.argtypes = [wintypes.HANDLE, ctypes.c_size_t, ctypes.c_size_t]
+                set_ws.restype = wintypes.BOOL
+                set_ws(h_proc, ctypes.c_size_t(-1), ctypes.c_size_t(-1))
         except Exception:
             pass
 
@@ -1322,24 +1408,6 @@ class SteamSmartLauncherApp:
     def set_status(self, text):
         self.lbl_status.config(text=text)
 
-class WindowsNamedMutex:
-    def __init__(self, name="Global\\SteamSmartLauncher_Switch_Lock", timeout_ms=12000):
-        self.name = name
-        self.timeout_ms = timeout_ms
-        self.handle = None
-
-    def __enter__(self):
-        self.handle = ctypes.windll.kernel32.CreateMutexW(None, False, self.name)
-        if not self.handle:
-            return self
-        ctypes.windll.kernel32.WaitForSingleObject(self.handle, self.timeout_ms)
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.handle:
-            ctypes.windll.kernel32.ReleaseMutex(self.handle)
-            ctypes.windll.kernel32.CloseHandle(self.handle)
-            self.handle = None
 
 def main():
     parser = argparse.ArgumentParser(description="Steam Smart Switcher & Game Launcher")
@@ -1352,7 +1420,7 @@ def main():
     # DUAL MODE: If --account is passed, run headless launcher mode!
     if args.account:
         try:
-            with WindowsNamedMutex("Global\\SteamSmartLauncher_Switch_Lock", timeout_ms=15000):
+            with WindowsNamedMutex("Local\\SteamSmartLauncher_Switch_Lock", timeout_ms=15000):
                 core = SteamCore()
                 core.switch_account_and_launch(target_account=args.account, appid=args.appid, launch_args=args.args)
         except Exception as ex:

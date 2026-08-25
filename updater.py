@@ -6,7 +6,7 @@ import subprocess
 import threading
 import requests
 
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 DEFAULT_GITHUB_REPO = "NobodySan97/SteamSmartSwitcher"
 
 class Updater:
@@ -92,18 +92,23 @@ class Updater:
                         pct = int((downloaded / total_size) * 100)
                         on_progress(pct, downloaded, total_size)
 
-        # Generate atomic batch updater
+        # Generate atomic batch updater with bounded retry count
         updater_bat = os.path.join(self.base_dir, "_apply_update.bat")
         bat_content = f"""@echo off
+set RETRY_COUNT=0
 timeout /t 2 /nobreak >nul
 :RETRY
 move /y "{update_file}" "{target_file}" >nul 2>&1
 if errorlevel 1 (
+    set /a RETRY_COUNT+=1
+    if %RETRY_COUNT% GEQ 15 (
+        exit /b 1
+    )
     timeout /t 1 /nobreak >nul
     goto RETRY
 )
 start "" "{target_file}"
-del "%~f0"
+(goto) 2>nul & del "%~f0"
 """
         with open(updater_bat, "w", encoding="utf-8") as f:
             f.write(bat_content)

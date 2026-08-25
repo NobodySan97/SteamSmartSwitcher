@@ -101,15 +101,27 @@ class TrayManager:
         return Menu(*menu_items)
 
     def _on_switch_account(self, account_name):
-        self.core.switch_account_and_launch(account_name, appid=None)
-        if self.app and hasattr(self.app, "root"):
-            self.app.root.after(2000, self.app.refresh_data)
-        self.update_menu()
+        def _worker():
+            try:
+                self.core.switch_account_and_launch(account_name, appid=None)
+                if self.app and hasattr(self.app, "root"):
+                    self.app.root.after(1500, self.app.refresh_data)
+                self.update_menu()
+            except Exception as ex:
+                print(f"[TraySwitch] Error: {ex}")
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _on_quick_launch_game(self, appid):
-        active_user = self.core.get_current_auto_login_user()
-        l_args = self.core.get_game_launch_options(appid, active_user)
-        self.core.switch_account_and_launch(active_user, appid, l_args)
+        def _worker():
+            try:
+                active_user = self.core.get_current_auto_login_user()
+                l_args = self.core.get_game_launch_options(appid, active_user)
+                self.core.switch_account_and_launch(active_user, appid, l_args)
+            except Exception as ex:
+                print(f"[TrayLaunch] Error: {ex}")
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _on_show_app(self):
         if self.app and hasattr(self.app, "root"):
