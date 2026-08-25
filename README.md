@@ -74,18 +74,6 @@
 
 ---
 
-## ⌨️ Keyboard Shortcuts
-
-| Shortcut | Action |
-|---|---|
-| `Ctrl + F` or `/` | Focus search bar |
-| `Enter` | Launch selected game with selected account |
-| `Esc` | Clear search query or minimize to tray |
-| `F5` or `Ctrl + R` | Refresh and rescan Steam accounts & library |
-| `Ctrl + ,` | Open Settings dialog |
-
----
-
 ## 🛠️ Building from Source
 
 ```bash

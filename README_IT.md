@@ -74,18 +74,6 @@
 
 ---
 
-## ⌨️ Scorciatoie da Tastiera
-
-| Tasto | Azione |
-|---|---|
-| `Ctrl + F` o `/` | Cerca rapidamente un gioco |
-| `Invio (Enter)` | Avvia il gioco selezionato |
-| `Esc` | Pulisce la ricerca o riduce a icona |
-| `F5` o `Ctrl + R` | Ricarica e scansiona account e libreria |
-| `Ctrl + ,` | Apre le Impostazioni |
-
----
-
 ## 🛠️ Compilazione da Sorgente
 
 ```bash

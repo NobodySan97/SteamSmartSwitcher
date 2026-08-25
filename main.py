@@ -173,7 +173,6 @@ class SteamSmartLauncherApp:
         self.game_cards = {}
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_window_close)
-        self._bind_keyboard_shortcuts()
 
         self._setup_styles()
         self._build_ui()
@@ -185,30 +184,6 @@ class SteamSmartLauncherApp:
         if start_minimized or self.core.settings.get("start_minimized", False):
             self.root.withdraw()
             self._trim_memory()
-
-    def _bind_keyboard_shortcuts(self):
-        self.root.bind("<Control-f>", lambda e: self._focus_search())
-        self.root.bind("<slash>", lambda e: self._focus_search())
-        self.root.bind("<Escape>", self._on_escape_pressed)
-        self.root.bind("<F5>", lambda e: self.refresh_data())
-        self.root.bind("<Control-r>", lambda e: self.refresh_data())
-        self.root.bind("<Control-comma>", lambda e: self.open_settings_dialog())
-        self.root.bind("<Return>", lambda e: self._on_enter_pressed())
-
-    def _focus_search(self):
-        self.entry_search.focus_set()
-        self.entry_search.select_range(0, tk.END)
-        return "break"
-
-    def _on_escape_pressed(self, event=None):
-        if self.entry_search.get():
-            self.search_var.set("")
-        else:
-            self.on_window_close()
-
-    def _on_enter_pressed(self):
-        if self.entry_search.focus_get() != self.entry_search and self.selected_game and self.selected_account:
-            self.launch_game_now_action()
 
     def _setup_styles(self):
         style = ttk.Style()
