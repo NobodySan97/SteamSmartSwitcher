@@ -34,7 +34,7 @@
 
 ## 📥 Installazione & Download
 
-1. Scarica l'ultima versione di **`SteamSmartSwitcher.exe`** dalla [sezione Releases di GitHub](https://github.com/SteamSmartSwitcher/SteamSmartSwitcher/releases/latest).
+1. Scarica l'ultima versione di **`SteamSmartSwitcher.exe`** dalla [sezione Releases di GitHub](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest).
 2. Salva il file in una cartella a tua scelta (es. `C:\Programmi\SteamSmartLauncher` o nei tuoi Documenti).
 3. Avvia `SteamSmartSwitcher.exe`.
 
@@ -82,7 +82,7 @@ Se vuoi compilare autonomamente l'eseguibile:
 
 ```bash
 # 1. Clona il repository
-git clone https://github.com/SteamSmartSwitcher/SteamSmartSwitcher.git
+git clone https://github.com/NobodySan97/SteamSmartSwitcher.git
 cd SteamSmartSwitcher
 
 # 2. Installa le dipendenze
