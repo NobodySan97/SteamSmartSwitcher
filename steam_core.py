@@ -74,6 +74,8 @@ class SteamCore:
             "auto_check_updates": True,
             "theme": "steam",
             "language": "it",
+            "favorites": [],
+            "sort_mode": "favorites",
             "github_repo": "NobodySan97/SteamSmartSwitcher",
             "default_account_on_boot": ""
         }
@@ -85,6 +87,23 @@ class SteamCore:
             except Exception as e:
                 print(f"Error loading settings: {e}")
         return default_settings
+
+    def is_favorite(self, appid):
+        favs = self.settings.get("favorites", [])
+        return str(appid) in [str(x) for x in favs]
+
+    def toggle_favorite(self, appid):
+        appid_str = str(appid)
+        favs = [str(x) for x in self.settings.get("favorites", [])]
+        if appid_str in favs:
+            favs.remove(appid_str)
+            is_fav = False
+        else:
+            favs.append(appid_str)
+            is_fav = True
+        self.settings["favorites"] = favs
+        self.save_settings()
+        return is_fav
 
     def save_settings(self):
         try:

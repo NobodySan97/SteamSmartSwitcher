@@ -1,7 +1,9 @@
 import os
 import sys
+import gc
 import argparse
 import ctypes
+from ctypes import wintypes
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 import subprocess
@@ -92,8 +94,8 @@ class SteamSmartLauncherApp:
         self.updater = Updater(self.core)
 
         self.root.title(f"{self.i18n('app_title')} v{APP_VERSION}")
-        self.root.geometry("1160x800")
-        self.root.minsize(1000, 700)
+        self.root.geometry("1180x820")
+        self.root.minsize(1020, 720)
         self.root.configure(bg=self.theme["bg"])
 
         self.tray = TrayManager(self.core, self)
@@ -105,6 +107,7 @@ class SteamSmartLauncherApp:
         self.selected_game = None
         self.view_mode = self.core.settings.get("view_mode", "grid")
         self.filter_mode = "all"
+        self.sort_mode = self.core.settings.get("sort_mode", "favorites")
 
         self.accounts = []
         self.games = []
@@ -133,6 +136,7 @@ class SteamSmartLauncherApp:
 
         if start_minimized or self.core.settings.get("start_minimized", False):
             self.root.withdraw()
+            self._trim_memory()
 
     def _bind_keyboard_shortcuts(self):
         self.root.bind("<Control-f>", lambda e: self._focus_search())
@@ -253,9 +257,27 @@ class SteamSmartLauncherApp:
                                        relief=tk.FLAT, padx=8, pady=2, cursor="hand2", command=lambda: self._set_view_mode("list"))
         self.btn_list_view.pack(side=tk.RIGHT)
 
-        # Filter Chips Row
-        self.filter_chips_frame = tk.Frame(self.right_col, bg=self.theme["bg"])
-        self.filter_chips_frame.pack(fill=tk.X, pady=(0, 6))
+        # Filter Chips & Sorting Row
+        self.controls_row = tk.Frame(self.right_col, bg=self.theme["bg"])
+        self.controls_row.pack(fill=tk.X, pady=(0, 6))
+
+        self.filter_chips_frame = tk.Frame(self.controls_row, bg=self.theme["bg"])
+        self.filter_chips_frame.pack(side=tk.LEFT, fill=tk.X)
+
+        self.sort_frame = tk.Frame(self.controls_row, bg=self.theme["bg"])
+        self.sort_frame.pack(side=tk.RIGHT)
+
+        self.lbl_sort = tk.Label(self.sort_frame, text=self.i18n("sort_label"), font=("Segoe UI", 8), fg=self.theme["text_muted"], bg=self.theme["bg"])
+        self.lbl_sort.pack(side=tk.LEFT, padx=(0, 4))
+
+        self.sort_keys = ["favorites", "name", "recent", "size"]
+        self.sort_names = [self.i18n(f"sort_{k}") for k in ["favorites", "name_asc", "recent", "size"]]
+        cur_sort_idx = self.sort_keys.index(self.sort_mode) if self.sort_mode in self.sort_keys else 0
+
+        self.combo_sort = ttk.Combobox(self.sort_frame, values=self.sort_names, state="readonly", width=18, font=("Segoe UI", 8))
+        self.combo_sort.current(cur_sort_idx)
+        self.combo_sort.bind("<<ComboboxSelected>>", self._on_sort_changed)
+        self.combo_sort.pack(side=tk.RIGHT)
 
         # Search Bar
         self.search_frame = tk.Frame(self.right_col, bg=self.theme["entry_bg"], highlightthickness=1, highlightbackground=self.theme["border"], pady=2, padx=6)
@@ -280,6 +302,10 @@ class SteamSmartLauncherApp:
 
         self.det_top = tk.Frame(self.game_details_box, bg=self.theme["card"])
         self.det_top.pack(fill=tk.X)
+
+        self.btn_fav_hero = tk.Button(self.det_top, text="☆", font=("Segoe UI", 12, "bold"), fg="#ffcc00", bg=self.theme["card"],
+                                      relief=tk.FLAT, bd=0, padx=2, pady=0, cursor="hand2", command=self._toggle_selected_game_fav)
+        self.btn_fav_hero.pack(side=tk.LEFT, padx=(0, 6))
 
         self.lbl_selected_game_name = tk.Label(self.det_top, text=self.i18n("no_game_selected"), font=("Segoe UI", 11, "bold"), fg="#ffffff", bg=self.theme["card"])
         self.lbl_selected_game_name.pack(side=tk.LEFT)
@@ -408,12 +434,21 @@ class SteamSmartLauncherApp:
         self._render_filter_chips()
         self._apply_search_filter()
 
+    def _on_sort_changed(self, event=None):
+        idx = self.combo_sort.current()
+        if idx >= 0 and idx < len(self.sort_keys):
+            self.sort_mode = self.sort_keys[idx]
+            self.core.settings["sort_mode"] = self.sort_mode
+            self.core.save_settings()
+            self._apply_search_filter()
+
     def _render_filter_chips(self):
         for w in self.filter_chips_frame.winfo_children():
             w.destroy()
 
         chips = [
             (self.i18n("filter_all"), "all"),
+            (self.i18n("filter_favorites"), "favorites"),
             (self.i18n("filter_owned"), "owned"),
             (self.i18n("filter_shared"), "shared")
         ]
@@ -455,7 +490,7 @@ class SteamSmartLauncherApp:
 
         self._render_accounts()
         self._render_filter_chips()
-        self._render_games()
+        self._apply_search_filter()
         self._update_preview()
         self.tray.update_menu()
 
@@ -677,6 +712,7 @@ class SteamSmartLauncherApp:
             name = game["name"]
             poster_path = self.core.get_cached_poster_path(appid)
             owner_info = self.core.get_game_ownership(game, self.selected_account, self.accounts, i18n=self.i18n)
+            is_fav = self.core.is_favorite(appid)
 
             r = i // cols
             c = i % cols
@@ -699,10 +735,20 @@ class SteamSmartLauncherApp:
             else:
                 poster_lbl.config(text="🎮\n" + name[:12], font=("Segoe UI", 9, "bold"), fg=self.theme["accent"], width=12, height=8)
 
+            badge_box = tk.Frame(card, bg=self.theme["card"])
+            badge_box.pack(fill=tk.X, pady=(2, 0))
+
+            btn_fav = tk.Button(badge_box, text="★" if is_fav else "☆", font=("Segoe UI", 8, "bold"),
+                                fg="#ffcc00" if is_fav else self.theme["text_muted"], bg=self.theme["card"],
+                                relief=tk.FLAT, bd=0, padx=2, pady=0, cursor="hand2",
+                                command=lambda aid=appid, g=game: self._toggle_game_fav(aid, g))
+            btn_fav.ignore_hover = True
+            btn_fav.pack(side=tk.LEFT, padx=(2, 2))
+
             badge_color = self.theme["shared_bg"] if owner_info["is_shared"] else self.theme["owned_bg"]
             badge_txt = self.i18n("badge_shared_grid") if owner_info["is_shared"] else self.i18n("badge_owned_grid")
-            lbl_own = tk.Label(card, text=badge_txt, font=("Segoe UI", 7, "bold"), fg="#ffffff", bg=badge_color, padx=4, pady=1)
-            lbl_own.pack(pady=(2, 0))
+            lbl_own = tk.Label(badge_box, text=badge_txt, font=("Segoe UI", 7, "bold"), fg="#ffffff", bg=badge_color, padx=4, pady=1)
+            lbl_own.pack(side=tk.LEFT)
 
             short_title = name if len(name) <= 15 else name[:14] + "…"
             lbl_t = tk.Label(card, text=short_title, font=("Segoe UI", 8, "bold"), fg="#ffffff", bg=self.theme["card"])
@@ -718,6 +764,7 @@ class SteamSmartLauncherApp:
             size_str = game["size_str"]
             drive = game["drive"]
             owner_info = self.core.get_game_ownership(game, self.selected_account, self.accounts, i18n=self.i18n)
+            is_fav = self.core.is_favorite(appid)
 
             card = ModernCard(self.games_container, self.theme, on_click=lambda g=game: self._select_game(g), padx=12, pady=8)
             card.pack(fill=tk.X, pady=3)
@@ -725,6 +772,13 @@ class SteamSmartLauncherApp:
 
             row = tk.Frame(card, bg=self.theme["card"])
             row.pack(fill=tk.X)
+
+            btn_fav = tk.Button(row, text="★" if is_fav else "☆", font=("Segoe UI", 11, "bold"),
+                                fg="#ffcc00" if is_fav else self.theme["text_muted"], bg=self.theme["card"],
+                                relief=tk.FLAT, bd=0, padx=2, pady=0, cursor="hand2",
+                                command=lambda aid=appid, g=game: self._toggle_game_fav(aid, g))
+            btn_fav.ignore_hover = True
+            btn_fav.pack(side=tk.LEFT, padx=(0, 6))
 
             lbl_gname = tk.Label(row, text=f"🎮  {name}", font=("Segoe UI", 10, "bold"), fg="#ffffff", bg=self.theme["card"])
             lbl_gname.pack(side=tk.LEFT)
@@ -745,6 +799,17 @@ class SteamSmartLauncherApp:
             if self.selected_game and self.selected_game["appid"] == appid:
                 card.set_selected(True)
 
+    def _toggle_game_fav(self, appid, game):
+        new_fav = self.core.toggle_favorite(appid)
+        msg_key = "toast_fav_added" if new_fav else "toast_fav_removed"
+        self.show_toast(self.i18n(msg_key, game=game["name"]), icon="⭐" if new_fav else "⚪")
+        self._apply_search_filter()
+        self._update_preview()
+
+    def _toggle_selected_game_fav(self):
+        if self.selected_game:
+            self._toggle_game_fav(self.selected_game["appid"], self.selected_game)
+
     def _on_search_input(self, *args):
         if self._search_timer:
             self.root.after_cancel(self._search_timer)
@@ -754,13 +819,26 @@ class SteamSmartLauncherApp:
         query = self.search_var.get().strip().lower()
         res = list(self.games)
 
-        if self.filter_mode == "owned":
+        # 1. Filter
+        if self.filter_mode == "favorites":
+            res = [g for g in res if self.core.is_favorite(g["appid"])]
+        elif self.filter_mode == "owned":
             res = [g for g in res if self.core.get_game_ownership(g, self.selected_account, self.accounts, i18n=self.i18n)["is_owner"]]
         elif self.filter_mode == "shared":
             res = [g for g in res if self.core.get_game_ownership(g, self.selected_account, self.accounts, i18n=self.i18n)["is_shared"]]
 
         if query:
             res = [g for g in res if query in g["name"].lower() or query in g["appid"]]
+
+        # 2. Sort
+        if self.sort_mode == "favorites":
+            res.sort(key=lambda g: (not self.core.is_favorite(g["appid"]), g["name"].lower()))
+        elif self.sort_mode == "name":
+            res.sort(key=lambda g: g["name"].lower())
+        elif self.sort_mode == "recent":
+            res.sort(key=lambda g: g.get("last_played_ts", 0), reverse=True)
+        elif self.sort_mode == "size":
+            res.sort(key=lambda g: g.get("size_bytes", 0), reverse=True)
 
         self.filtered_games = res
         self._render_games()
@@ -769,7 +847,7 @@ class SteamSmartLauncherApp:
         self.selected_account = acc
         for acc_name, card in self.account_cards.items():
             card.set_selected(acc_name == acc["account_name"])
-        self._render_games()
+        self._apply_search_filter()
         self._update_preview()
 
     def _select_game(self, game):
@@ -782,7 +860,9 @@ class SteamSmartLauncherApp:
         if self.selected_game:
             g = self.selected_game
             owner_info = self.core.get_game_ownership(g, self.selected_account, self.accounts, i18n=self.i18n)
+            is_fav = self.core.is_favorite(g["appid"])
 
+            self.btn_fav_hero.config(text="★" if is_fav else "☆", fg="#ffcc00" if is_fav else self.theme["text_muted"])
             self.lbl_selected_game_name.config(text=f"🎮 {g['name']} (ID: {g['appid']})")
             self.lbl_ownership_badge.config(
                 text=owner_info["badge_text"],
@@ -797,6 +877,7 @@ class SteamSmartLauncherApp:
             opts = self.core.get_game_launch_options(g["appid"], acc_name)
             self.launch_opts_var.set(opts)
         else:
+            self.btn_fav_hero.config(text="☆", fg=self.theme["text_muted"])
             self.lbl_selected_game_name.config(text=self.i18n("no_game_selected"))
             self.lbl_ownership_badge.config(text="")
             self.lbl_selected_game_size.config(text="")
@@ -1162,7 +1243,13 @@ class SteamSmartLauncherApp:
         self.lbl_games_title.config(text=self.i18n("games_section_title"), bg=self.theme["bg"])
         self.btn_grid_view.config(text=self.i18n("btn_grid_view"), bg=self.theme["card_selected"] if self.view_mode == "grid" else self.theme["card"])
         self.btn_list_view.config(text=self.i18n("btn_list_view"), bg=self.theme["card_selected"] if self.view_mode == "list" else self.theme["card"])
+        self.controls_row.config(bg=self.theme["bg"])
         self.filter_chips_frame.config(bg=self.theme["bg"])
+        self.sort_frame.config(bg=self.theme["bg"])
+        self.lbl_sort.config(text=self.i18n("sort_label"), fg=self.theme["text_muted"], bg=self.theme["bg"])
+
+        self.sort_names = [self.i18n(f"sort_{k}") for k in ["favorites", "name_asc", "recent", "size"]]
+        self.combo_sort.config(values=self.sort_names)
 
         self.search_frame.config(bg=self.theme["entry_bg"], highlightbackground=self.theme["border"])
         self.lbl_search_icon.config(fg=self.theme["text_muted"], bg=self.theme["entry_bg"])
@@ -1193,9 +1280,25 @@ class SteamSmartLauncherApp:
         self._render_filter_chips()
         self.refresh_data()
 
+    def _trim_memory(self):
+        """Releases image buffers, runs garbage collection, and trims working set in Windows."""
+        self.avatar_images.clear()
+        self.poster_images.clear()
+        self.capsule_images.clear()
+        self.icon_images.clear()
+        gc.collect()
+        try:
+            # Native Win32 call: empties working set to pagefile/standby, dropping RAM to <10MB
+            ctypes.windll.kernel32.SetProcessWorkingSetSize(
+                ctypes.windll.kernel32.GetCurrentProcess(), -1, -1
+            )
+        except Exception:
+            pass
+
     def on_window_close(self):
         if self.core.settings.get("close_to_tray", True):
             self.root.withdraw()
+            self._trim_memory()
             if self.core.settings.get("show_notifications", True) and self.tray and self.tray.icon:
                 try:
                     self.tray.icon.notify("Steam Smart Switcher is running in system tray.", "Steam Smart Switcher")
@@ -1208,6 +1311,7 @@ class SteamSmartLauncherApp:
         self.root.deiconify()
         self.root.lift()
         self.root.focus_force()
+        self.refresh_data()
 
     def quit_completely(self):
         if self.tray:
