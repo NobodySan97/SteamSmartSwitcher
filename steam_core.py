@@ -72,6 +72,7 @@ class SteamCore:
             "close_to_tray": True,
             "show_notifications": True,
             "auto_check_updates": True,
+            "theme": "steam",
             "language": "it",
             "github_repo": "NobodySan97/SteamSmartSwitcher",
             "default_account_on_boot": ""

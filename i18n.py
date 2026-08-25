@@ -62,9 +62,10 @@ TRANSLATIONS = {
         "setting_close_to_tray": "🔲 Riduci a icona nel System Tray quando si preme [X]",
         "setting_notifications": "🔔 Mostra notifiche di Windows al cambio account o avvio",
         "setting_auto_update": "🔄 Controlla automaticamente aggiornamenti da GitHub all'avvio",
+        "setting_theme": "🎨 Tema Grafico Interfaccia:",
+        "setting_language": "🌍 Lingua dell'Interfaccia / Language:",
         "setting_default_account": "👤 Account Predefinito all'Avvio di Windows:",
         "setting_default_none": "(Nessuno - Lascia l'ultimo usato)",
-        "setting_language": "🌍 Lingua dell'Interfaccia / Language:",
         "setting_github_repo": "🌐 Repository GitHub (owner/repo):",
         "btn_check_updates": "🔍 Controlla",
         "btn_checking": "Verifica...",
@@ -84,7 +85,12 @@ TRANSLATIONS = {
         "tray_open": "Apri Finestra Principale",
         "tray_switch_to": "Passa a: {persona} (@{account})",
         "tray_launch_game": "Avvia {name}",
-        "tray_exit": "Esci da Steam Smart Switcher"
+        "tray_exit": "Esci da Steam Smart Switcher",
+        "theme_steam": "🌌 Steam Dark (Classico)",
+        "theme_oled": "🖤 OLED Pure Black",
+        "theme_cyberpunk": "🟣 Cyberpunk Neon",
+        "theme_midnight": "🌊 Midnight Blue",
+        "theme_forest": "🌲 Nordic Forest"
     },
     "en": {
         "app_title": "Steam Smart Account Switcher",
@@ -149,9 +155,10 @@ TRANSLATIONS = {
         "setting_close_to_tray": "🔲 Minimize to System Tray when clicking [X]",
         "setting_notifications": "🔔 Show Windows notifications on account switch & launch",
         "setting_auto_update": "🔄 Automatically check for GitHub updates on startup",
+        "setting_theme": "🎨 UI Color Theme:",
+        "setting_language": "🌍 Interface Language / Lingua:",
         "setting_default_account": "👤 Default Account on Windows Boot:",
         "setting_default_none": "(None - Keep last used)",
-        "setting_language": "🌍 Interface Language / Lingua:",
         "setting_github_repo": "🌐 GitHub Repository (owner/repo):",
         "btn_check_updates": "🔍 Check Now",
         "btn_checking": "Checking...",
@@ -171,7 +178,12 @@ TRANSLATIONS = {
         "tray_open": "Open Main Window",
         "tray_switch_to": "Switch to: {persona} (@{account})",
         "tray_launch_game": "Launch {name}",
-        "tray_exit": "Exit Steam Smart Switcher"
+        "tray_exit": "Exit Steam Smart Switcher",
+        "theme_steam": "🌌 Steam Dark (Classic)",
+        "theme_oled": "🖤 OLED Pure Black",
+        "theme_cyberpunk": "🟣 Cyberpunk Neon",
+        "theme_midnight": "🌊 Midnight Blue",
+        "theme_forest": "🌲 Nordic Forest"
     }
 }
 

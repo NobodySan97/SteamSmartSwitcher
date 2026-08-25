@@ -17,6 +17,12 @@
 
 ---
 
+> [!WARNING]
+> **Progetto in Fase di Sviluppo (Work In Progress) — Non Ancora Testato**  
+> Questo software è attualmente in **fase di sviluppo iniziale e non è stato ancora testato a fondo** su differenti sistemi operativi, configurazioni hardware o account Steam multipli. Potrebbero verificarsi bug o comportamenti inattesi. Usalo a tua discrezione e sentiti libero di aprire una Issue per segnalare problemi o suggerimenti!
+
+---
+
 </div>
 
 ## 🌟 Caratteristiche Principali
@@ -24,6 +30,7 @@
 - ⚡ **Switch Automatico con Scorciatoia Desktop**: Fai doppio click sull'icona del gioco sul Desktop: se non sei loggato con l'account giusto, Steam viene riavviato e loggato automaticamente senza chiederti la password, avviando subito la partita.
 - 📦 **Tutto in un Singolo File Eseguibile (`.exe`)**: Zero configurazioni esterne. L'app funziona come interfaccia grafica completa se aperta normalmente, o come launcher istantaneo da riga di comando (<15ms) se chiamata dalle scorciatoie.
 - 🎨 **Interfaccia Dark Steam con Cover e Avatar Reali**: Riconosce i tuoi account, scarica e mostra gli avatar della community Steam e le copertine ufficiali in formato poster verticale o vista a elenco dettagliata.
+- 🌈 **5 Temi Grafici Personalizzabili**: Personalizza l'aspetto dell'applicazione scegliendo tra **Steam Dark**, **OLED Pure Black** (nero assoluto a 0-nit per display OLED), **Cyberpunk Neon**, **Midnight Blue** o **Nordic Forest**.
 - 👑 **Riconoscimento Licenze & 👨‍👩‍👧‍👦 Family Sharing**: Riconosce all'istante se un gioco appartiene al profilo selezionato o se proviene dal Family Sharing di un altro account presente sul PC.
 - 🔔 **Integrazione Barra delle Applicazioni (System Tray)**: Minimizza l'app vicino all'orologio di Windows, con menu contestuale con tasto destro per cambiare account o lanciare giochi al volo.
 - ⚙️ **Opzioni di Avvio Personalizzate per Account**: Imposta parametri di lancio personalizzati (es. `-novid -high +exec smurf.cfg`) memorizzati per singolo account.

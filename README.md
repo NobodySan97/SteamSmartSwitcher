@@ -17,6 +17,12 @@
 
 ---
 
+> [!WARNING]
+> **Work In Progress (WIP) — Untested Early Build**  
+> This project is currently in active early development and **has not been thoroughly tested yet** across different hardware setups, Steam configurations, and Windows environments. Bugs or unexpected behavior may occur. Use at your own discretion and feel free to report issues!
+
+---
+
 </div>
 
 ## 🌟 Key Features
@@ -24,6 +30,7 @@
 - ⚡ **1-Click Smart Shortcut Routing**: Double-click any game shortcut created on your desktop: if you're not logged into the correct Steam account, Steam is automatically restarted and logged into the right account (zero password prompts), launching your game immediately.
 - 📦 **All-in-One Standalone Executable (`.exe`)**: No Python installation required for end users. The binary operates as a full GUI with dark Steam aesthetics when launched normally, and as an ultra-fast headless launcher (<15ms) when triggered from shortcuts.
 - 🎨 **Modern Steam Dark UI & Visual Assets**: Automatically detects all configured accounts, downloads and displays real Steam Community avatars, and renders game libraries in both Poster Grid and Detailed List views.
+- 🌈 **5 Built-in Color Themes**: Customize the entire client interface with **Steam Dark**, **OLED Pure Black** (for OLED displays), **Cyberpunk Neon**, **Midnight Blue**, or **Nordic Forest**.
 - 👑 **License & 👨‍👩‍👧‍👦 Family Sharing Detection**: Automatically distinguishes games owned natively by the selected account from games shared across local profiles via Steam Family Sharing.
 - 🔔 **Windows System Tray Integration**: Minimizes cleanly to the taskbar notification area next to the Windows clock, featuring a right-click context menu for instant account switching and game launching.
 - ⚙️ **Per-Account Custom Launch Options**: Store tailored launch parameters (e.g. `-novid -high +exec smurf.cfg`) per account and game.
