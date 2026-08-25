@@ -71,6 +71,9 @@ class SteamCore:
             "start_minimized": False,
             "close_to_tray": True,
             "show_notifications": True,
+            "auto_check_updates": True,
+            "language": "it",
+            "github_repo": "NobodySan97/SteamSmartSwitcher",
             "default_account_on_boot": ""
         }
         if os.path.exists(self.settings_file):
@@ -671,29 +674,33 @@ class SteamCore:
         games.sort(key=lambda g: g["name"].lower())
         return games
 
-    def get_game_ownership(self, game, account, all_accounts):
+    def get_game_ownership(self, game, account, all_accounts, i18n=None):
+        def _t(k, **kw):
+            return i18n.t(k, **kw) if i18n else (k.replace("_", " ").title())
+
         if not account or not game:
-            return {"is_owner": True, "badge_text": "Proprietario", "is_shared": False}
+            return {"is_owner": True, "badge_text": _t("badge_owned_list") if i18n else "👑 Di Proprietà", "is_shared": False}
 
         game_owner_id = game.get("last_owner_id", "")
         account_steamid = account.get("steamid", "")
 
         if not game_owner_id or game_owner_id == "0":
-            return {"is_owner": True, "badge_text": "👑 Di Proprietà", "is_shared": False}
+            return {"is_owner": True, "badge_text": _t("badge_owned_list") if i18n else "👑 Di Proprietà", "is_shared": False}
 
         if game_owner_id == account_steamid:
-            return {"is_owner": True, "badge_text": "👑 Di Proprietà", "is_shared": False}
+            return {"is_owner": True, "badge_text": _t("badge_owned_list") if i18n else "👑 Di Proprietà", "is_shared": False}
 
         owner_acc = next((a for a in all_accounts if a["steamid"] == game_owner_id), None)
         if owner_acc:
+            b_text = _t("badge_shared_list", owner=owner_acc['persona_name']) if i18n else f"👨‍👩‍👧‍👦 Condiviso da {owner_acc['persona_name']}"
             return {
                 "is_owner": False,
-                "badge_text": f"👨‍👩‍👧‍👦 Condiviso da {owner_acc['persona_name']}",
+                "badge_text": b_text,
                 "is_shared": True,
                 "owner_name": owner_acc['persona_name']
             }
 
-        return {"is_owner": False, "badge_text": "👨‍👩‍👧‍👦 Family Sharing", "is_shared": True}
+        return {"is_owner": False, "badge_text": _t("badge_shared_generic") if i18n else "👨‍👩‍👧‍👦 Family Sharing", "is_shared": True}
 
     def resolve_game_icon(self, appid, name, installdir, library_path, url_icons=None):
         custom_icon = os.path.join(self.icons_dir, f"{appid}.ico")

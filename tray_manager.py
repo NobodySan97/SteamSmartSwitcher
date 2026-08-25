@@ -12,6 +12,11 @@ class TrayManager:
         self.icon = None
         self._is_running = False
 
+    def get_i18n(self):
+        if self.app and hasattr(self.app, "i18n"):
+            return self.app.i18n
+        return lambda k, **kw: k
+
     def create_tray_image(self):
         """Creates or loads an icon for the system tray."""
         steam_ico = os.path.join(self.core.steam_path, "Steam.exe")
@@ -22,7 +27,6 @@ class TrayManager:
             except Exception:
                 pass
 
-        # Fallback icon
         img = Image.new("RGBA", (64, 64), color=(27, 40, 56, 255))
         d = ImageDraw.Draw(img)
         d.ellipse((8, 8, 56, 56), fill=(102, 192, 244, 255), outline=(255, 255, 255, 255), width=2)
@@ -31,14 +35,19 @@ class TrayManager:
 
     def build_menu(self):
         """Dynamically generates tray menu with current accounts and games."""
+        _t = self.get_i18n()
         accounts = self.core.get_remembered_accounts()
         games = self.core.get_installed_games()
         active_user = self.core.get_current_auto_login_user()
 
         active_acc_obj = next((a for a in accounts if a["account_name"].lower() == active_user.lower()), None)
-        active_display = f"🟢 Attivo: {active_acc_obj['persona_name']} ({active_acc_obj['account_name']})" if active_acc_obj else f"🟢 Attivo: {active_user or 'Nessuno'}"
+        if active_acc_obj:
+            active_display = f"{_t('active_account_prefix')}{active_acc_obj['persona_name']} ({active_acc_obj['account_name']})"
+        elif active_user:
+            active_display = f"{_t('active_account_prefix')}{active_user}"
+        else:
+            active_display = _t('no_active_account')
 
-        # Helper callback creators to satisfy pystray signature
         def make_switch_cb(acc_name):
             def cb(icon=None, item_obj=None):
                 self._on_switch_account(acc_name)
@@ -49,7 +58,6 @@ class TrayManager:
                 self._on_quick_launch_game(appid)
             return cb
 
-        # Submenu: Switch Account
         account_items = []
         for acc in accounts:
             acc_name = acc["account_name"]
@@ -59,9 +67,8 @@ class TrayManager:
             account_items.append(item(label, make_switch_cb(acc_name)))
         
         if not account_items:
-            account_items.append(item("Nessun account memorizzato", lambda icon, item: None, enabled=False))
+            account_items.append(item(_t("no_accounts_found"), lambda icon, item: None, enabled=False))
 
-        # Submenu: Quick Launch Game
         game_items = []
         for g in games[:15]:
             appid = g["appid"]
@@ -69,7 +76,7 @@ class TrayManager:
             game_items.append(item(gname, make_launch_cb(appid)))
 
         if not game_items:
-            game_items.append(item("Nessun gioco installato", lambda icon, item: None, enabled=False))
+            game_items.append(item(_t("no_games_found"), lambda icon, item: None, enabled=False))
 
         def on_show(icon=None, item_obj=None):
             self._on_show_app()
@@ -83,13 +90,13 @@ class TrayManager:
         menu_items = [
             item(active_display, lambda icon, item: None, enabled=False),
             Menu.SEPARATOR,
-            item("👤 Cambia Account", Menu(*account_items)),
-            item("🎮 Avvia Gioco Rapido", Menu(*game_items)),
+            item(f"👤 {_t('accounts_section_title')}", Menu(*account_items)),
+            item(f"🎮 {_t('games_section_title')}", Menu(*game_items)),
             Menu.SEPARATOR,
-            item("🖥️ Apri Applicazione", on_show, default=True),
-            item("📁 Apri Desktop", on_open_desk),
+            item(f"🖥️ {_t('tray_open')}", on_show, default=True),
+            item(f"📁 Desktop", on_open_desk),
             Menu.SEPARATOR,
-            item("❌ Esci", on_exit)
+            item(f"❌ {_t('tray_exit')}", on_exit)
         ]
         return Menu(*menu_items)
 

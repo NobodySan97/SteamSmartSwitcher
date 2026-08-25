@@ -20,6 +20,7 @@ except Exception:
 from steam_core import SteamCore
 from tray_manager import TrayManager
 from updater import Updater, APP_VERSION, DEFAULT_GITHUB_REPO
+from i18n import I18n
 
 # Modern Steam Palette
 COLOR_BG = "#171a21"
@@ -93,13 +94,15 @@ class ModernCard(tk.Frame):
 class SteamSmartLauncherApp:
     def __init__(self, root, start_minimized=False):
         self.root = root
-        self.root.title(f"Steam Smart Account Switcher v{APP_VERSION}")
+        self.core = SteamCore()
+        self.i18n = I18n(self.core.settings.get("language", "it"))
+        self.updater = Updater(self.core)
+
+        self.root.title(f"{self.i18n('app_title')} v{APP_VERSION}")
         self.root.geometry("1160x800")
         self.root.minsize(1000, 700)
         self.root.configure(bg=COLOR_BG)
 
-        self.core = SteamCore()
-        self.updater = Updater(self.core)
         self.tray = TrayManager(self.core, self)
         self.tray.start()
 
@@ -188,15 +191,15 @@ class SteamSmartLauncherApp:
         title_line = tk.Frame(title_box, bg=COLOR_HEADER)
         title_line.pack(anchor="w")
 
-        lbl_title = tk.Label(title_line, text="🎮 Steam Smart Switcher", font=("Segoe UI", 16, "bold"), fg=COLOR_ACCENT, bg=COLOR_HEADER)
-        lbl_title.pack(side=tk.LEFT)
+        self.lbl_title = tk.Label(title_line, text=self.i18n("header_title"), font=("Segoe UI", 16, "bold"), fg=COLOR_ACCENT, bg=COLOR_HEADER)
+        self.lbl_title.pack(side=tk.LEFT)
 
         lbl_ver = tk.Label(title_line, text=f"v{APP_VERSION}", font=("Segoe UI", 8, "bold"), fg=COLOR_TEXT_MUTED, bg=COLOR_CARD, padx=5, pady=1)
         lbl_ver.pack(side=tk.LEFT, padx=(8, 0))
 
-        lbl_subtitle = tk.Label(title_box, text="Switch automatico account Steam, cover grafiche, Family Sharing e gestione rapida",
+        self.lbl_subtitle = tk.Label(title_box, text=self.i18n("header_subtitle"),
                                 font=("Segoe UI", 9), fg=COLOR_TEXT_MUTED, bg=COLOR_HEADER)
-        lbl_subtitle.pack(anchor="w")
+        self.lbl_subtitle.pack(anchor="w")
 
         header_right = tk.Frame(header_frame, bg=COLOR_HEADER)
         header_right.pack(side=tk.RIGHT, fill=tk.Y)
@@ -204,22 +207,22 @@ class SteamSmartLauncherApp:
         self.avatar_label_header = tk.Label(header_right, bg=COLOR_HEADER)
         self.avatar_label_header.pack(side=tk.LEFT, padx=(0, 8))
 
-        self.lbl_active_user = tk.Label(header_right, text="Account Attivo: Inizializzazione...",
+        self.lbl_active_user = tk.Label(header_right, text=f"{self.i18n('active_account_prefix')}...",
                                         font=("Segoe UI", 9, "bold"), fg="#ffffff", bg="#1a3d24",
                                         padx=12, pady=6, relief=tk.FLAT)
         self.lbl_active_user.pack(side=tk.LEFT, padx=(0, 8))
 
-        btn_settings = tk.Button(header_right, text="⚙️ Impostazioni", font=("Segoe UI", 9, "bold"),
-                                 fg="#ffffff", bg=COLOR_CARD, activebackground=COLOR_CARD_HOVER,
-                                 activeforeground="#ffffff", relief=tk.FLAT, padx=10, pady=5,
-                                 cursor="hand2", command=self.open_settings_dialog)
-        btn_settings.pack(side=tk.LEFT, padx=(0, 6))
+        self.btn_settings = tk.Button(header_right, text=self.i18n("btn_settings"), font=("Segoe UI", 9, "bold"),
+                                      fg="#ffffff", bg=COLOR_CARD, activebackground=COLOR_CARD_HOVER,
+                                      activeforeground="#ffffff", relief=tk.FLAT, padx=10, pady=5,
+                                      cursor="hand2", command=self.open_settings_dialog)
+        self.btn_settings.pack(side=tk.LEFT, padx=(0, 6))
 
-        btn_refresh = tk.Button(header_right, text="🔄 Ricarica (F5)", font=("Segoe UI", 9, "bold"),
-                                fg="#ffffff", bg=COLOR_CARD_HOVER, activebackground=COLOR_ACCENT,
-                                activeforeground="#ffffff", relief=tk.FLAT, padx=10, pady=5,
-                                cursor="hand2", command=self.refresh_data)
-        btn_refresh.pack(side=tk.LEFT)
+        self.btn_refresh = tk.Button(header_right, text=self.i18n("btn_refresh"), font=("Segoe UI", 9, "bold"),
+                                     fg="#ffffff", bg=COLOR_CARD_HOVER, activebackground=COLOR_ACCENT,
+                                     activeforeground="#ffffff", relief=tk.FLAT, padx=10, pady=5,
+                                     cursor="hand2", command=self.refresh_data)
+        self.btn_refresh.pack(side=tk.LEFT)
 
         # 2. Main Content
         content_frame = tk.Frame(self.root, bg=COLOR_BG, padx=16, pady=10)
@@ -232,8 +235,8 @@ class SteamSmartLauncherApp:
         acc_header = tk.Frame(left_col, bg=COLOR_BG)
         acc_header.pack(fill=tk.X, pady=(0, 6))
 
-        lbl_acc_title = tk.Label(acc_header, text="👤 1. Account Rilevati", font=("Segoe UI", 12, "bold"), fg="#ffffff", bg=COLOR_BG)
-        lbl_acc_title.pack(side=tk.LEFT)
+        self.lbl_acc_title = tk.Label(acc_header, text=self.i18n("accounts_section_title"), font=("Segoe UI", 12, "bold"), fg="#ffffff", bg=COLOR_BG)
+        self.lbl_acc_title.pack(side=tk.LEFT)
 
         self.accounts_container = self._create_scrollable_container(left_col)
 
@@ -244,15 +247,15 @@ class SteamSmartLauncherApp:
         games_top_bar = tk.Frame(right_col, bg=COLOR_BG)
         games_top_bar.pack(fill=tk.X, pady=(0, 6))
 
-        lbl_games_title = tk.Label(games_top_bar, text="🎯 2. Libreria Giochi", font=("Segoe UI", 12, "bold"), fg="#ffffff", bg=COLOR_BG)
-        lbl_games_title.pack(side=tk.LEFT)
+        self.lbl_games_title = tk.Label(games_top_bar, text=self.i18n("games_section_title"), font=("Segoe UI", 12, "bold"), fg="#ffffff", bg=COLOR_BG)
+        self.lbl_games_title.pack(side=tk.LEFT)
 
-        self.btn_grid_view = tk.Button(games_top_bar, text="🔲 Griglia Poster", font=("Segoe UI", 8, "bold"),
+        self.btn_grid_view = tk.Button(games_top_bar, text=self.i18n("btn_grid_view"), font=("Segoe UI", 8, "bold"),
                                        fg="#ffffff", bg=COLOR_CARD_SELECTED if self.view_mode == "grid" else COLOR_CARD,
                                        relief=tk.FLAT, padx=8, pady=2, cursor="hand2", command=lambda: self._set_view_mode("grid"))
         self.btn_grid_view.pack(side=tk.RIGHT, padx=(4, 0))
 
-        self.btn_list_view = tk.Button(games_top_bar, text="📋 Lista Dettagli", font=("Segoe UI", 8, "bold"),
+        self.btn_list_view = tk.Button(games_top_bar, text=self.i18n("btn_list_view"), font=("Segoe UI", 8, "bold"),
                                        fg="#ffffff", bg=COLOR_CARD_SELECTED if self.view_mode == "list" else COLOR_CARD,
                                        relief=tk.FLAT, padx=8, pady=2, cursor="hand2", command=lambda: self._set_view_mode("list"))
         self.btn_list_view.pack(side=tk.RIGHT)
@@ -285,7 +288,7 @@ class SteamSmartLauncherApp:
         det_top = tk.Frame(self.game_details_box, bg=COLOR_CARD)
         det_top.pack(fill=tk.X)
 
-        self.lbl_selected_game_name = tk.Label(det_top, text="Nessun gioco selezionato", font=("Segoe UI", 11, "bold"), fg="#ffffff", bg=COLOR_CARD)
+        self.lbl_selected_game_name = tk.Label(det_top, text=self.i18n("no_game_selected"), font=("Segoe UI", 11, "bold"), fg="#ffffff", bg=COLOR_CARD)
         self.lbl_selected_game_name.pack(side=tk.LEFT)
 
         self.lbl_ownership_badge = tk.Label(det_top, text="", font=("Segoe UI", 8, "bold"), fg="#ffffff", bg=COLOR_OWNED_BG, padx=6, pady=1)
@@ -301,12 +304,12 @@ class SteamSmartLauncherApp:
         self.lbl_last_played = tk.Label(det_links, text="", font=("Segoe UI", 8), fg=COLOR_TEXT_MUTED, bg=COLOR_CARD)
         self.lbl_last_played.pack(side=tk.LEFT, padx=(0, 10))
 
-        self.btn_open_folder = tk.Button(det_links, text="📁 File Locali", font=("Segoe UI", 8),
+        self.btn_open_folder = tk.Button(det_links, text=self.i18n("btn_open_folder"), font=("Segoe UI", 8),
                                          fg=COLOR_TEXT, bg=COLOR_ENTRY_BG, activebackground=COLOR_CARD_HOVER,
                                          relief=tk.FLAT, padx=8, pady=2, cursor="hand2", command=self._on_open_game_folder)
         self.btn_open_folder.pack(side=tk.LEFT, padx=(0, 6))
 
-        self.btn_open_store = tk.Button(det_links, text="🛒 Negozio Steam", font=("Segoe UI", 8),
+        self.btn_open_store = tk.Button(det_links, text=self.i18n("btn_open_store"), font=("Segoe UI", 8),
                                         fg=COLOR_TEXT, bg=COLOR_ENTRY_BG, activebackground=COLOR_CARD_HOVER,
                                         relief=tk.FLAT, padx=8, pady=2, cursor="hand2", command=self._on_open_store_page)
         self.btn_open_store.pack(side=tk.LEFT)
@@ -314,8 +317,8 @@ class SteamSmartLauncherApp:
         launch_opts_row = tk.Frame(self.game_details_box, bg=COLOR_CARD)
         launch_opts_row.pack(fill=tk.X, pady=(4, 0))
 
-        lbl_lopt = tk.Label(launch_opts_row, text="⚙️ Opzioni di Avvio Custom (es. -novid -high):", font=("Segoe UI", 8, "bold"), fg=COLOR_TEXT_MUTED, bg=COLOR_CARD)
-        lbl_lopt.pack(side=tk.LEFT)
+        self.lbl_lopt = tk.Label(launch_opts_row, text=self.i18n("launch_options_label"), font=("Segoe UI", 8, "bold"), fg=COLOR_TEXT_MUTED, bg=COLOR_CARD)
+        self.lbl_lopt.pack(side=tk.LEFT)
 
         self.launch_opts_var = tk.StringVar()
         self.launch_opts_var.trace_add("write", self._on_launch_opts_changed)
@@ -328,42 +331,42 @@ class SteamSmartLauncherApp:
         bottom_bar = tk.Frame(self.root, bg=COLOR_HEADER, padx=20, pady=12, highlightthickness=1, highlightbackground=COLOR_BORDER)
         bottom_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
-        self.lbl_preview = tk.Label(bottom_bar, text="👈 Seleziona un account e un gioco per iniziare.",
+        self.lbl_preview = tk.Label(bottom_bar, text=self.i18n("preview_empty"),
                                     font=("Segoe UI", 10, "bold"), fg=COLOR_ACCENT, bg=COLOR_HEADER)
         self.lbl_preview.pack(anchor="w", pady=(0, 8))
 
         actions_row = tk.Frame(bottom_bar, bg=COLOR_HEADER)
         actions_row.pack(fill=tk.X)
 
-        self.btn_create_shortcut = tk.Button(actions_row, text="⭐ Crea Icona sul Desktop",
+        self.btn_create_shortcut = tk.Button(actions_row, text=self.i18n("btn_create_shortcut"),
                                              font=("Segoe UI", 11, "bold"), fg="#ffffff", bg=COLOR_ACCENT,
                                              activebackground=COLOR_ACCENT_HOVER, activeforeground="#ffffff",
                                              relief=tk.FLAT, padx=16, pady=8, cursor="hand2",
                                              command=self.create_shortcut_action)
         self.btn_create_shortcut.pack(side=tk.LEFT, padx=(0, 8))
 
-        self.btn_launch_now = tk.Button(actions_row, text="🚀 Avvia Gioco Subito (Enter)",
+        self.btn_launch_now = tk.Button(actions_row, text=self.i18n("btn_launch_now"),
                                         font=("Segoe UI", 10, "bold"), fg="#ffffff", bg=COLOR_GREEN,
                                         activebackground=COLOR_GREEN_HOVER, activeforeground="#ffffff",
                                         relief=tk.FLAT, padx=14, pady=8, cursor="hand2",
                                         command=self.launch_game_now_action)
         self.btn_launch_now.pack(side=tk.LEFT, padx=(0, 8))
 
-        self.btn_create_all_folder = tk.Button(actions_row, text="📂 Genera TUTTI i Giochi per questo Account",
+        self.btn_create_all_folder = tk.Button(actions_row, text=self.i18n("btn_create_all"),
                                                font=("Segoe UI", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_CARD,
                                                activebackground=COLOR_CARD_HOVER, activeforeground="#ffffff",
                                                relief=tk.FLAT, padx=12, pady=8, cursor="hand2",
                                                command=self.create_all_shortcuts_action)
         self.btn_create_all_folder.pack(side=tk.LEFT, padx=(0, 8))
 
-        btn_manage = tk.Button(actions_row, text="📋 Gestione Icone",
-                               font=("Segoe UI", 9), fg=COLOR_TEXT, bg=COLOR_CARD,
-                               activebackground=COLOR_CARD_HOVER, activeforeground="#ffffff",
-                               relief=tk.FLAT, padx=12, pady=8, cursor="hand2",
-                               command=self.open_manage_shortcuts_dialog)
-        btn_manage.pack(side=tk.RIGHT)
+        self.btn_manage = tk.Button(actions_row, text=self.i18n("btn_manage_shortcuts"),
+                                    font=("Segoe UI", 9), fg=COLOR_TEXT, bg=COLOR_CARD,
+                                    activebackground=COLOR_CARD_HOVER, activeforeground="#ffffff",
+                                    relief=tk.FLAT, padx=12, pady=8, cursor="hand2",
+                                    command=self.open_manage_shortcuts_dialog)
+        self.btn_manage.pack(side=tk.RIGHT)
 
-        self.lbl_status = tk.Label(self.root, text=f"Pronto  |  Steam Smart Switcher v{APP_VERSION}", font=("Segoe UI", 8), fg=COLOR_TEXT_MUTED, bg=COLOR_BG, anchor="w", padx=20, pady=2)
+        self.lbl_status = tk.Label(self.root, text=self.i18n("status_ready", version=APP_VERSION), font=("Segoe UI", 8), fg=COLOR_TEXT_MUTED, bg=COLOR_BG, anchor="w", padx=20, pady=2)
         self.lbl_status.pack(fill=tk.X, side=tk.BOTTOM)
 
     def _create_scrollable_container(self, parent):
@@ -417,9 +420,9 @@ class SteamSmartLauncherApp:
             w.destroy()
 
         chips = [
-            ("Tutti", "all"),
-            ("👑 Di Proprietà", "owned"),
-            ("👨‍👩‍👧‍👦 Family Sharing", "shared")
+            (self.i18n("filter_all"), "all"),
+            (self.i18n("filter_owned"), "owned"),
+            (self.i18n("filter_shared"), "shared")
         ]
 
         for label, mode in chips:
@@ -435,7 +438,7 @@ class SteamSmartLauncherApp:
         ToastNotification(self.root, text, icon=icon)
 
     def refresh_data(self):
-        self.set_status("Rilevamento dati da Steam in corso...")
+        self.set_status(self.i18n("status_scanning"))
         active_user = self.core.get_current_auto_login_user()
 
         self.accounts = self.core.get_remembered_accounts()
@@ -444,12 +447,12 @@ class SteamSmartLauncherApp:
 
         active_acc_obj = next((a for a in self.accounts if a["account_name"].lower() == active_user.lower()), None)
         if active_acc_obj:
-            self.lbl_active_user.config(text=f"🟢 Attivo: {active_acc_obj['persona_name']} ({active_acc_obj['account_name']})", bg="#1b4d29")
+            self.lbl_active_user.config(text=f"{self.i18n('active_account_prefix')}{active_acc_obj['persona_name']} ({active_acc_obj['account_name']})", bg="#1b4d29")
             self._load_header_avatar(active_acc_obj["steamid"], active_acc_obj["persona_name"])
         elif active_user:
-            self.lbl_active_user.config(text=f"🟢 Attivo: {active_user}", bg="#1b4d29")
+            self.lbl_active_user.config(text=f"{self.i18n('active_account_prefix')}{active_user}", bg="#1b4d29")
         else:
-            self.lbl_active_user.config(text="⚪ Nessun account attivo", bg="#3d3d3d")
+            self.lbl_active_user.config(text=self.i18n("no_active_account"), bg="#3d3d3d")
 
         if not self.selected_account and self.accounts:
             self.selected_account = active_acc_obj if active_acc_obj else self.accounts[0]
@@ -464,7 +467,7 @@ class SteamSmartLauncherApp:
         self.tray.update_menu()
 
         threading.Thread(target=self._async_fetch_assets, daemon=True).start()
-        self.set_status(f"Rilevati {len(self.accounts)} account e {len(self.games)} giochi installati.")
+        self.set_status(self.i18n("status_detected", acc_count=len(self.accounts), game_count=len(self.games)))
 
     def _async_check_updates_silent(self):
         res = self.updater.check_for_updates()
@@ -474,26 +477,26 @@ class SteamSmartLauncherApp:
     def _show_update_notification_dialog(self, info):
         latest = info.get("latest_version")
         dlg = tk.Toplevel(self.root)
-        dlg.title("🎉 Aggiornamento Disponibile")
+        dlg.title(self.i18n("update_available_title"))
         dlg.geometry("520x380")
         dlg.configure(bg=COLOR_BG)
         dlg.transient(self.root)
         dlg.grab_set()
 
-        lbl_t = tk.Label(dlg, text=f"🚀 Nuova Versione Disponibile: v{latest}", font=("Segoe UI", 13, "bold"), fg=COLOR_ACCENT, bg=COLOR_BG)
+        lbl_t = tk.Label(dlg, text=self.i18n("update_available_header", version=latest), font=("Segoe UI", 13, "bold"), fg=COLOR_ACCENT, bg=COLOR_BG)
         lbl_t.pack(anchor="w", padx=20, pady=(16, 8))
 
-        lbl_sub = tk.Label(dlg, text=f"Versione attuale: v{APP_VERSION}  ➡️  Nuova versione: v{latest}", font=("Segoe UI", 9), fg=COLOR_TEXT_MUTED, bg=COLOR_BG)
+        lbl_sub = tk.Label(dlg, text=self.i18n("update_version_diff", current=APP_VERSION, latest=latest), font=("Segoe UI", 9), fg=COLOR_TEXT_MUTED, bg=COLOR_BG)
         lbl_sub.pack(anchor="w", padx=20, pady=(0, 10))
 
         box = tk.Frame(dlg, bg=COLOR_CARD, highlightthickness=1, highlightbackground=COLOR_BORDER, padx=12, pady=10)
         box.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 12))
 
-        lbl_cl_t = tk.Label(box, text="Novità e Changelog:", font=("Segoe UI", 9, "bold"), fg="#ffffff", bg=COLOR_CARD)
+        lbl_cl_t = tk.Label(box, text=self.i18n("update_changelog_title"), font=("Segoe UI", 9, "bold"), fg="#ffffff", bg=COLOR_CARD)
         lbl_cl_t.pack(anchor="w")
 
         txt_cl = tk.Text(box, height=8, font=("Segoe UI", 9), fg=COLOR_TEXT, bg=COLOR_ENTRY_BG, relief=tk.FLAT, highlightthickness=1, highlightbackground=COLOR_BORDER)
-        txt_cl.insert(tk.END, info.get("changelog") or "Nessun changelog fornito.")
+        txt_cl.insert(tk.END, info.get("changelog") or "No changelog provided.")
         txt_cl.config(state=tk.DISABLED)
         txt_cl.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
 
@@ -506,35 +509,35 @@ class SteamSmartLauncherApp:
         btn_row.pack(fill=tk.X, padx=20, pady=(0, 16))
 
         def start_download():
-            btn_update.config(state=tk.DISABLED, text="Download in corso...")
+            btn_update.config(state=tk.DISABLED, text=self.i18n("btn_checking"))
             progress_bar.pack(fill=tk.X, padx=20, pady=(0, 4))
             lbl_dl_status.pack(padx=20, pady=(0, 8))
 
             def on_progress(pct, downloaded, total):
                 progress_var.set(pct)
-                lbl_dl_status.config(text=f"Scaricamento: {downloaded/(1024*1024):.1f} MB / {total/(1024*1024):.1f} MB ({pct}%)")
+                lbl_dl_status.config(text=f"Download: {downloaded/(1024*1024):.1f} MB / {total/(1024*1024):.1f} MB ({pct}%)")
 
             def run():
                 try:
                     self.updater.download_and_apply_update(info.get("download_url"), on_progress=on_progress)
                 except Exception as ex:
-                    dlg.after(0, lambda: messagebox.showerror("Errore Aggiornamento", f"Impossibile applicare l'aggiornamento:\n{ex}"))
-                    dlg.after(0, lambda: btn_update.config(state=tk.NORMAL, text="Riprova Aggiornamento"))
+                    dlg.after(0, lambda: messagebox.showerror("Update Error", f"Failed to apply update:\n{ex}"))
+                    dlg.after(0, lambda: btn_update.config(state=tk.NORMAL, text=self.i18n("btn_update_now")))
 
             threading.Thread(target=run, daemon=True).start()
 
-        btn_update = tk.Button(btn_row, text="⬇️ Aggiorna Ora", font=("Segoe UI", 10, "bold"),
+        btn_update = tk.Button(btn_row, text=self.i18n("btn_update_now"), font=("Segoe UI", 10, "bold"),
                                fg="#ffffff", bg=COLOR_GREEN, activebackground=COLOR_GREEN_HOVER,
                                relief=tk.FLAT, padx=14, pady=6, cursor="hand2", command=start_download)
         btn_update.pack(side=tk.LEFT, padx=(0, 8))
 
-        btn_gh = tk.Button(btn_row, text="🌐 Pagina GitHub", font=("Segoe UI", 9),
+        btn_gh = tk.Button(btn_row, text=self.i18n("btn_github_page"), font=("Segoe UI", 9),
                            fg=COLOR_TEXT, bg=COLOR_CARD, activebackground=COLOR_CARD_HOVER,
                            relief=tk.FLAT, padx=12, pady=6, cursor="hand2",
                            command=lambda: os.startfile(info.get("release_url") or "https://github.com"))
         btn_gh.pack(side=tk.LEFT)
 
-        btn_skip = tk.Button(btn_row, text="Più Tardi", font=("Segoe UI", 9),
+        btn_skip = tk.Button(btn_row, text=self.i18n("btn_later"), font=("Segoe UI", 9),
                              fg=COLOR_TEXT_MUTED, bg=COLOR_ENTRY_BG, relief=tk.FLAT,
                              padx=12, pady=6, cursor="hand2", command=dlg.destroy)
         btn_skip.pack(side=tk.RIGHT)
@@ -570,7 +573,7 @@ class SteamSmartLauncherApp:
         self.account_cards.clear()
 
         if not self.accounts:
-            lbl_empty = tk.Label(self.accounts_container, text="Nessun account memorizzato trovato.",
+            lbl_empty = tk.Label(self.accounts_container, text=self.i18n("no_accounts_found"),
                                  font=("Segoe UI", 9), fg=COLOR_TEXT_MUTED, bg=COLOR_BG, pady=20)
             lbl_empty.pack(anchor="w")
             return
@@ -614,7 +617,7 @@ class SteamSmartLauncherApp:
             lbl_pname.pack(side=tk.LEFT)
 
             if is_active:
-                lbl_badge = tk.Label(top_line, text="ATTIVO", font=("Segoe UI", 7, "bold"), fg="#ffffff", bg=COLOR_GREEN, padx=5, pady=1)
+                lbl_badge = tk.Label(top_line, text=self.i18n("badge_active"), font=("Segoe UI", 7, "bold"), fg="#ffffff", bg=COLOR_GREEN, padx=5, pady=1)
                 lbl_badge.ignore_hover = True
                 lbl_badge.pack(side=tk.RIGHT)
 
@@ -632,21 +635,21 @@ class SteamSmartLauncherApp:
             btn_row = tk.Frame(card, bg=COLOR_CARD)
             btn_row.pack(fill=tk.X, pady=(6, 0))
 
-            btn_switch = tk.Button(btn_row, text="⚡ Switcha", font=("Segoe UI", 8, "bold"),
+            btn_switch = tk.Button(btn_row, text=self.i18n("btn_switch"), font=("Segoe UI", 8, "bold"),
                                    fg=COLOR_ACCENT, bg=COLOR_ENTRY_BG, activebackground=COLOR_CARD_HOVER,
                                    relief=tk.FLAT, padx=6, pady=2, cursor="hand2",
                                    command=lambda a=acc_name: self._switch_only_account(a))
             btn_switch.ignore_hover = True
             btn_switch.pack(side=tk.LEFT, padx=(0, 4))
 
-            btn_tag = tk.Button(btn_row, text="✏️ Tag/Nota", font=("Segoe UI", 8),
+            btn_tag = tk.Button(btn_row, text=self.i18n("btn_tag"), font=("Segoe UI", 8),
                                 fg=COLOR_TEXT, bg=COLOR_ENTRY_BG, activebackground=COLOR_CARD_HOVER,
                                 relief=tk.FLAT, padx=6, pady=2, cursor="hand2",
                                 command=lambda a=acc_name: self._edit_account_tag(a))
             btn_tag.ignore_hover = True
             btn_tag.pack(side=tk.LEFT, padx=(0, 4))
 
-            btn_profile = tk.Button(btn_row, text="🌐 Profilo", font=("Segoe UI", 8),
+            btn_profile = tk.Button(btn_row, text=self.i18n("btn_profile"), font=("Segoe UI", 8),
                                     fg=COLOR_TEXT, bg=COLOR_ENTRY_BG, activebackground=COLOR_CARD_HOVER,
                                     relief=tk.FLAT, padx=6, pady=2, cursor="hand2",
                                     command=lambda s=steamid: self.core.open_community_profile(s))
@@ -662,7 +665,7 @@ class SteamSmartLauncherApp:
         self.game_cards.clear()
 
         if not self.filtered_games:
-            lbl_empty = tk.Label(self.games_container, text="Nessun gioco trovato con questo filtro.", font=("Segoe UI", 9), fg=COLOR_TEXT_MUTED, bg=COLOR_BG, pady=20)
+            lbl_empty = tk.Label(self.games_container, text=self.i18n("no_games_found"), font=("Segoe UI", 9), fg=COLOR_TEXT_MUTED, bg=COLOR_BG, pady=20)
             lbl_empty.pack()
             return
 
@@ -680,7 +683,7 @@ class SteamSmartLauncherApp:
             appid = game["appid"]
             name = game["name"]
             poster_path = self.core.get_cached_poster_path(appid)
-            owner_info = self.core.get_game_ownership(game, self.selected_account, self.accounts)
+            owner_info = self.core.get_game_ownership(game, self.selected_account, self.accounts, i18n=self.i18n)
 
             r = i // cols
             c = i % cols
@@ -704,7 +707,7 @@ class SteamSmartLauncherApp:
                 poster_lbl.config(text="🎮\n" + name[:12], font=("Segoe UI", 9, "bold"), fg=COLOR_ACCENT, width=12, height=8)
 
             badge_color = COLOR_SHARED_BG if owner_info["is_shared"] else COLOR_OWNED_BG
-            badge_txt = "👨‍👩‍👧‍👦 Family" if owner_info["is_shared"] else "👑 Owned"
+            badge_txt = self.i18n("badge_shared_grid") if owner_info["is_shared"] else self.i18n("badge_owned_grid")
             lbl_own = tk.Label(card, text=badge_txt, font=("Segoe UI", 7, "bold"), fg="#ffffff", bg=badge_color, padx=4, pady=1)
             lbl_own.pack(pady=(2, 0))
 
@@ -721,7 +724,7 @@ class SteamSmartLauncherApp:
             name = game["name"]
             size_str = game["size_str"]
             drive = game["drive"]
-            owner_info = self.core.get_game_ownership(game, self.selected_account, self.accounts)
+            owner_info = self.core.get_game_ownership(game, self.selected_account, self.accounts, i18n=self.i18n)
 
             card = ModernCard(self.games_container, on_click=lambda g=game: self._select_game(g), padx=12, pady=8)
             card.pack(fill=tk.X, pady=3)
@@ -740,7 +743,7 @@ class SteamSmartLauncherApp:
             lbl_own = tk.Label(info_box, text=owner_info["badge_text"], font=("Segoe UI", 8, "bold"), fg="#ffffff", bg=badge_color, padx=6, pady=2)
             lbl_own.pack(side=tk.LEFT, padx=(0, 6))
 
-            lbl_size = tk.Label(info_box, text=f"💾 {size_str} ({drive})", font=("Segoe UI", 8), fg=COLOR_ACCENT, bg=COLOR_ENTRY_BG, padx=6, pady=2)
+            lbl_size = tk.Label(info_box, text=self.i18n("disk_space", size=size_str, drive=drive), font=("Segoe UI", 8), fg=COLOR_ACCENT, bg=COLOR_ENTRY_BG, padx=6, pady=2)
             lbl_size.pack(side=tk.LEFT, padx=(0, 6))
 
             lbl_appid = tk.Label(info_box, text=f"ID: {appid}", font=("Segoe UI", 8), fg=COLOR_TEXT_MUTED, bg=COLOR_ENTRY_BG, padx=6, pady=2)
@@ -759,9 +762,9 @@ class SteamSmartLauncherApp:
         res = list(self.games)
 
         if self.filter_mode == "owned":
-            res = [g for g in res if self.core.get_game_ownership(g, self.selected_account, self.accounts)["is_owner"]]
+            res = [g for g in res if self.core.get_game_ownership(g, self.selected_account, self.accounts, i18n=self.i18n)["is_owner"]]
         elif self.filter_mode == "shared":
-            res = [g for g in res if self.core.get_game_ownership(g, self.selected_account, self.accounts)["is_shared"]]
+            res = [g for g in res if self.core.get_game_ownership(g, self.selected_account, self.accounts, i18n=self.i18n)["is_shared"]]
 
         if query:
             res = [g for g in res if query in g["name"].lower() or query in g["appid"]]
@@ -785,21 +788,23 @@ class SteamSmartLauncherApp:
     def _update_preview(self):
         if self.selected_game:
             g = self.selected_game
-            owner_info = self.core.get_game_ownership(g, self.selected_account, self.accounts)
+            owner_info = self.core.get_game_ownership(g, self.selected_account, self.accounts, i18n=self.i18n)
 
             self.lbl_selected_game_name.config(text=f"🎮 {g['name']} (ID: {g['appid']})")
             self.lbl_ownership_badge.config(
                 text=owner_info["badge_text"],
                 bg=COLOR_SHARED_BG if owner_info["is_shared"] else COLOR_OWNED_BG
             )
-            self.lbl_selected_game_size.config(text=f"Spazio: {g.get('size_str', 'N/D')} su {g.get('drive', 'C:')}")
-            self.lbl_last_played.config(text=f"⏱️ Ultima sessione: {g.get('last_played_str', 'Mai')}")
+            self.lbl_selected_game_size.config(text=self.i18n("space_on_drive", size=g.get('size_str', 'N/D'), drive=g.get('drive', 'C:')))
+            
+            lp_str = g.get('last_played_str') if g.get('last_played_ts', 0) > 0 else self.i18n("never_played")
+            self.lbl_last_played.config(text=self.i18n("last_session", date=lp_str))
 
             acc_name = self.selected_account["account_name"] if self.selected_account else ""
             opts = self.core.get_game_launch_options(g["appid"], acc_name)
             self.launch_opts_var.set(opts)
         else:
-            self.lbl_selected_game_name.config(text="Nessun gioco selezionato")
+            self.lbl_selected_game_name.config(text=self.i18n("no_game_selected"))
             self.lbl_ownership_badge.config(text="")
             self.lbl_selected_game_size.config(text="")
             self.lbl_last_played.config(text="")
@@ -809,13 +814,13 @@ class SteamSmartLauncherApp:
             p_name = self.selected_account["persona_name"]
             u_name = self.selected_account["account_name"]
             l_opts = self.launch_opts_var.get().strip()
-            opts_str = f" | Opzioni: '{l_opts}'" if l_opts else ""
-            self.lbl_preview.config(text=f"🎯 Configurazione:  [ {g_name} ]  ➡️  Account: [ {p_name} ({u_name}) ]{opts_str}")
+            opts_str = f" | Options: '{l_opts}'" if l_opts else ""
+            self.lbl_preview.config(text=self.i18n("preview_ready", game=g_name, persona=p_name, user=u_name, opts=opts_str))
             self.btn_create_shortcut.config(state=tk.NORMAL)
             self.btn_launch_now.config(state=tk.NORMAL)
             self.btn_create_all_folder.config(state=tk.NORMAL)
         else:
-            self.lbl_preview.config(text="👈 Seleziona sia un account che un gioco.")
+            self.lbl_preview.config(text=self.i18n("preview_empty"))
             self.btn_create_shortcut.config(state=tk.DISABLED)
             self.btn_launch_now.config(state=tk.DISABLED)
 
@@ -827,7 +832,7 @@ class SteamSmartLauncherApp:
 
     def _edit_account_tag(self, account_name):
         current_tag = self.core.get_account_tag(account_name)
-        new_tag = simpledialog.askstring("Tag Account", f"Inserisci un'etichetta/nota per @{account_name}\n(es. Principale, Smurf, Co-op, Faceit):", initialvalue=current_tag, parent=self.root)
+        new_tag = simpledialog.askstring("Tag / Note", f"Tag for @{account_name}\n(e.g. Main, Smurf, Co-op):", initialvalue=current_tag, parent=self.root)
         if new_tag is not None:
             self.core.set_account_tag(account_name, new_tag)
             self.refresh_data()
@@ -835,21 +840,21 @@ class SteamSmartLauncherApp:
     def _switch_only_account(self, account_name):
         is_playing, appid = self.core.is_game_running()
         if is_playing:
-            messagebox.showerror("Gioco in Esecuzione", f"Impossibile cambiare account: Un gioco Steam (ID: {appid}) è aperto!\nSalva e chiudi il gioco prima di procedere.")
+            messagebox.showerror(self.i18n("game_running_title"), self.i18n("game_running_msg", appid=appid))
             return
 
-        res = messagebox.askyesno("Conferma Switch", f"Vuoi passare subito all'account '{account_name}' su Steam?\nSe Steam è aperto, verrà riavviato.")
+        res = messagebox.askyesno(self.i18n("confirm_switch_title"), self.i18n("confirm_switch_msg", account=account_name))
         if not res:
             return
 
-        self.set_status(f"Passaggio all'account {account_name}...")
+        self.set_status(f"Switching to {account_name}...")
         def run():
             try:
                 self.core.switch_account_and_launch(account_name, appid=None)
                 self.root.after(2000, self.refresh_data)
-                self.root.after(0, lambda: self.show_toast(f"Switch a @{account_name} completato!"))
+                self.root.after(0, lambda: self.show_toast(self.i18n("toast_switch_done", account=account_name)))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("Errore Switch", str(e)))
+                self.root.after(0, lambda: messagebox.showerror("Switch Error", str(e)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -857,7 +862,7 @@ class SteamSmartLauncherApp:
         if self.selected_game and self.selected_game.get("full_dir"):
             self.core.open_game_directory(self.selected_game["full_dir"])
         else:
-            messagebox.showinfo("Info", "Cartella del gioco non disponibile.")
+            messagebox.showinfo("Info", "Directory not available.")
 
     def _on_open_store_page(self):
         if self.selected_game:
@@ -873,14 +878,12 @@ class SteamSmartLauncherApp:
         persona_name = self.selected_account["persona_name"]
         launch_args = self.launch_opts_var.get().strip()
 
-        self.set_status(f"Creazione collegamento per {game_name} ({persona_name})...")
         try:
             shortcut_path = self.core.create_desktop_shortcut(appid, game_name, account_name, persona_name, launch_args=launch_args)
             filename = os.path.basename(shortcut_path)
-            self.show_toast(f"Icona creata: {filename}", icon="⭐")
-            self.set_status(f"✅ Collegamento creato: {filename}")
+            self.show_toast(self.i18n("toast_shortcut_created", filename=filename), icon="⭐")
         except Exception as e:
-            messagebox.showerror("Errore", f"Impossibile creare il collegamento:\n{e}")
+            messagebox.showerror("Error", f"Failed to create shortcut:\n{e}")
 
     def create_all_shortcuts_action(self):
         if not self.selected_account:
@@ -889,19 +892,16 @@ class SteamSmartLauncherApp:
         account_name = self.selected_account["account_name"]
         persona_name = self.selected_account["persona_name"]
 
-        res = messagebox.askyesno("Genera Tutto", f"Vuoi generare una cartella sul Desktop con TUTTI i tuoi giochi installati ({len(self.games)}) collegati all'account '{persona_name}'?")
+        res = messagebox.askyesno(self.i18n("confirm_generate_all_title"), self.i18n("confirm_generate_all_msg", count=len(self.games), persona=persona_name))
         if not res:
             return
 
-        self.set_status(f"Generazione pacchetto giochi per {persona_name}...")
         try:
             target_dir, created = self.core.create_all_shortcuts_for_account(account_name, persona_name, in_subfolder=True)
-            folder_name = os.path.basename(target_dir)
-            self.show_toast(f"Creata cartella con {len(created)} giochi!", icon="📁")
+            self.show_toast(self.i18n("toast_folder_created", count=len(created)), icon="📁")
             os.startfile(target_dir)
-            self.set_status(f"✅ Creata cartella '{folder_name}' con {len(created)} scorciatoie!")
         except Exception as e:
-            messagebox.showerror("Errore", f"Errore durante la creazione della cartella:\n{e}")
+            messagebox.showerror("Error", f"Failed to create folder:\n{e}")
 
     def launch_game_now_action(self):
         if not self.selected_game or not self.selected_account:
@@ -909,7 +909,7 @@ class SteamSmartLauncherApp:
 
         is_playing, active_appid = self.core.is_game_running()
         if is_playing and active_appid != int(self.selected_game["appid"]):
-            messagebox.showerror("Gioco in Esecuzione", f"Un altro gioco Steam (ID: {active_appid}) è attualmente in esecuzione.\nChiudilo prima di avviare un nuovo gioco.")
+            messagebox.showerror(self.i18n("game_running_title"), f"Another Steam game (ID: {active_appid}) is running.")
             return
 
         appid = self.selected_game["appid"]
@@ -918,14 +918,13 @@ class SteamSmartLauncherApp:
         persona_name = self.selected_account["persona_name"]
         launch_args = self.launch_opts_var.get().strip()
 
-        self.set_status(f"Avvio di {game_name} con account {persona_name}...")
         def run():
             try:
                 self.core.switch_account_and_launch(account_name, appid, launch_args=launch_args)
                 self.root.after(3000, self.refresh_data)
-                self.root.after(0, lambda: self.show_toast(f"Avvio {game_name} ({persona_name})...", icon="🚀"))
+                self.root.after(0, lambda: self.show_toast(self.i18n("toast_launching", game=game_name, persona=persona_name), icon="🚀"))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("Errore Avvio", str(e)))
+                self.root.after(0, lambda: messagebox.showerror("Launch Error", str(e)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -933,13 +932,13 @@ class SteamSmartLauncherApp:
         shortcuts = self.core.get_existing_smart_shortcuts()
 
         dlg = tk.Toplevel(self.root)
-        dlg.title("Collegamenti Smart Rilevati")
+        dlg.title(self.i18n("shortcuts_dlg_title"))
         dlg.geometry("640x480")
         dlg.configure(bg=COLOR_BG)
         dlg.transient(self.root)
         dlg.grab_set()
 
-        lbl_dlg_title = tk.Label(dlg, text="📋 Collegamenti Smart sul Desktop e Cartelle", font=("Segoe UI", 12, "bold"), fg=COLOR_ACCENT, bg=COLOR_BG)
+        lbl_dlg_title = tk.Label(dlg, text=self.i18n("shortcuts_dlg_header"), font=("Segoe UI", 12, "bold"), fg=COLOR_ACCENT, bg=COLOR_BG)
         lbl_dlg_title.pack(anchor="w", padx=16, pady=(16, 8))
 
         box = tk.Frame(dlg, bg=COLOR_CARD, highlightthickness=1, highlightbackground=COLOR_BORDER)
@@ -948,7 +947,7 @@ class SteamSmartLauncherApp:
         container = self._create_scrollable_container(box)
 
         if not shortcuts:
-            lbl_none = tk.Label(container, text="Nessun collegamento smart trovato sul Desktop.", font=("Segoe UI", 9), fg=COLOR_TEXT_MUTED, bg=COLOR_BG, pady=20)
+            lbl_none = tk.Label(container, text=self.i18n("shortcuts_dlg_empty"), font=("Segoe UI", 9), fg=COLOR_TEXT_MUTED, bg=COLOR_BG, pady=20)
             lbl_none.pack()
         else:
             for sc in shortcuts:
@@ -962,35 +961,35 @@ class SteamSmartLauncherApp:
                 lbl_fn.pack(side=tk.LEFT)
 
                 def delete_sc(path=sc["path"], row_widget=item):
-                    if messagebox.askyesno("Elimina", f"Vuoi eliminare il collegamento:\n{os.path.basename(path)}?"):
+                    if messagebox.askyesno("Delete", f"Delete shortcut:\n{os.path.basename(path)}?"):
                         try:
                             os.remove(path)
                             row_widget.destroy()
-                            self.show_toast("Collegamento rimosso.", icon="🗑️")
+                            self.show_toast(self.i18n("toast_shortcut_deleted"), icon="🗑️")
                         except Exception as ex:
-                            messagebox.showerror("Errore", f"Impossibile eliminare: {ex}")
+                            messagebox.showerror("Error", f"Failed: {ex}")
 
-                btn_del = tk.Button(row1, text="🗑️ Elimina", font=("Segoe UI", 8), fg="#ff5555", bg=COLOR_ENTRY_BG,
+                btn_del = tk.Button(row1, text=self.i18n("btn_delete"), font=("Segoe UI", 8), fg="#ff5555", bg=COLOR_ENTRY_BG,
                                     relief=tk.FLAT, padx=6, pady=2, cursor="hand2", command=delete_sc)
                 btn_del.pack(side=tk.RIGHT)
 
-                lbl_sub = tk.Label(item, text=f"AppID: {sc['appid']}  |  Account: {sc['account']}  |  Parametri: '{sc['launch_args'] or 'Nessuno'}'",
+                lbl_sub = tk.Label(item, text=f"AppID: {sc['appid']}  |  Account: {sc['account']}  |  Args: '{sc['launch_args'] or 'None'}'",
                                    font=("Segoe UI", 8), fg=COLOR_TEXT_MUTED, bg=COLOR_CARD)
                 lbl_sub.pack(anchor="w", pady=(2, 0))
 
-        btn_close = tk.Button(dlg, text="Chiudi", font=("Segoe UI", 9), fg=COLOR_TEXT, bg=COLOR_CARD_HOVER,
+        btn_close = tk.Button(dlg, text=self.i18n("btn_close"), font=("Segoe UI", 9), fg=COLOR_TEXT, bg=COLOR_CARD_HOVER,
                               relief=tk.FLAT, padx=16, pady=6, cursor="hand2", command=dlg.destroy)
         btn_close.pack(pady=(0, 14))
 
     def open_settings_dialog(self):
         dlg = tk.Toplevel(self.root)
-        dlg.title("Impostazioni & Preferenze")
-        dlg.geometry("560x540")
+        dlg.title(self.i18n("settings_title"))
+        dlg.geometry("580x580")
         dlg.configure(bg=COLOR_BG)
         dlg.transient(self.root)
         dlg.grab_set()
 
-        lbl_title = tk.Label(dlg, text="⚙️ Impostazioni Generali", font=("Segoe UI", 13, "bold"), fg=COLOR_ACCENT, bg=COLOR_BG)
+        lbl_title = tk.Label(dlg, text=self.i18n("settings_header"), font=("Segoe UI", 13, "bold"), fg=COLOR_ACCENT, bg=COLOR_BG)
         lbl_title.pack(anchor="w", padx=20, pady=(16, 12))
 
         box = tk.Frame(dlg, bg=COLOR_CARD, highlightthickness=1, highlightbackground=COLOR_BORDER, padx=16, pady=16)
@@ -1003,37 +1002,49 @@ class SteamSmartLauncherApp:
         var_notifications = tk.BooleanVar(value=self.core.settings.get("show_notifications", True))
         var_auto_update = tk.BooleanVar(value=self.core.settings.get("auto_check_updates", True))
 
-        cb_autostart = tk.Checkbutton(box, text="🚀 Avvia automaticamente con Windows all'accensione del PC",
+        cb_autostart = tk.Checkbutton(box, text=self.i18n("setting_autostart"),
                                       variable=var_autostart, font=("Segoe UI", 9), fg="#ffffff", bg=COLOR_CARD,
                                       selectcolor=COLOR_ENTRY_BG, activebackground=COLOR_CARD, activeforeground="#ffffff")
-        cb_autostart.pack(anchor="w", pady=4)
+        cb_autostart.pack(anchor="w", pady=3)
 
-        cb_min = tk.Checkbutton(box, text="📥 Avvia direttamente nella barra (Minimizzato nel System Tray)",
+        cb_min = tk.Checkbutton(box, text=self.i18n("setting_start_minimized"),
                                 variable=var_start_minimized, font=("Segoe UI", 9), fg="#ffffff", bg=COLOR_CARD,
                                 selectcolor=COLOR_ENTRY_BG, activebackground=COLOR_CARD, activeforeground="#ffffff")
-        cb_min.pack(anchor="w", pady=4)
+        cb_min.pack(anchor="w", pady=3)
 
-        cb_close = tk.Checkbutton(box, text="🔲 Riduci a icona nel System Tray quando si preme [X]",
+        cb_close = tk.Checkbutton(box, text=self.i18n("setting_close_to_tray"),
                                   variable=var_close_to_tray, font=("Segoe UI", 9), fg="#ffffff", bg=COLOR_CARD,
                                   selectcolor=COLOR_ENTRY_BG, activebackground=COLOR_CARD, activeforeground="#ffffff")
-        cb_close.pack(anchor="w", pady=4)
+        cb_close.pack(anchor="w", pady=3)
 
-        cb_notif = tk.Checkbutton(box, text="🔔 Mostra notifiche di Windows al cambio account o avvio",
+        cb_notif = tk.Checkbutton(box, text=self.i18n("setting_notifications"),
                                   variable=var_notifications, font=("Segoe UI", 9), fg="#ffffff", bg=COLOR_CARD,
                                   selectcolor=COLOR_ENTRY_BG, activebackground=COLOR_CARD, activeforeground="#ffffff")
-        cb_notif.pack(anchor="w", pady=4)
+        cb_notif.pack(anchor="w", pady=3)
 
-        cb_upd = tk.Checkbutton(box, text="🔄 Controlla automaticamente aggiornamenti da GitHub all'avvio",
+        cb_upd = tk.Checkbutton(box, text=self.i18n("setting_auto_update"),
                                 variable=var_auto_update, font=("Segoe UI", 9), fg="#ffffff", bg=COLOR_CARD,
                                 selectcolor=COLOR_ENTRY_BG, activebackground=COLOR_CARD, activeforeground="#ffffff")
-        cb_upd.pack(anchor="w", pady=4)
+        cb_upd.pack(anchor="w", pady=3)
 
-        tk.Frame(box, bg=COLOR_BORDER, height=1).pack(fill=tk.X, pady=8)
+        tk.Frame(box, bg=COLOR_BORDER, height=1).pack(fill=tk.X, pady=6)
 
-        lbl_def = tk.Label(box, text="👤 Account Predefinito all'Avvio di Windows:", font=("Segoe UI", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_CARD)
+        # Language Selection
+        lbl_lang = tk.Label(box, text=self.i18n("setting_language"), font=("Segoe UI", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_CARD)
+        lbl_lang.pack(anchor="w")
+
+        lang_options = ["🇮🇹 Italiano", "🇬🇧 English"]
+        lang_codes = ["it", "en"]
+        cur_lang = self.core.settings.get("language", "it")
+        combo_lang = ttk.Combobox(box, values=lang_options, state="readonly", font=("Segoe UI", 9))
+        combo_lang.current(0 if cur_lang == "it" else 1)
+        combo_lang.pack(fill=tk.X, pady=(2, 6))
+
+        # Default Account
+        lbl_def = tk.Label(box, text=self.i18n("setting_default_account"), font=("Segoe UI", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_CARD)
         lbl_def.pack(anchor="w")
 
-        account_options = ["(Nessuno - Lascia l'ultimo usato)"] + [f"{a['persona_name']} (@{a['account_name']})" for a in self.accounts]
+        account_options = [self.i18n("setting_default_none")] + [f"{a['persona_name']} (@{a['account_name']})" for a in self.accounts]
         account_usernames = [""] + [a["account_name"] for a in self.accounts]
 
         cur_def = self.core.settings.get("default_account_on_boot", "")
@@ -1046,14 +1057,14 @@ class SteamSmartLauncherApp:
 
         combo_def = ttk.Combobox(box, values=account_options, state="readonly", font=("Segoe UI", 9))
         combo_def.current(cur_idx)
-        combo_def.pack(fill=tk.X, pady=(4, 8))
+        combo_def.pack(fill=tk.X, pady=(2, 6))
 
-        # GitHub Repo & Manual Update Check
-        lbl_repo = tk.Label(box, text="🌐 Repository GitHub (owner/repo):", font=("Segoe UI", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_CARD)
+        # GitHub Repo
+        lbl_repo = tk.Label(box, text=self.i18n("setting_github_repo"), font=("Segoe UI", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_CARD)
         lbl_repo.pack(anchor="w")
 
         repo_frame = tk.Frame(box, bg=COLOR_CARD)
-        repo_frame.pack(fill=tk.X, pady=(4, 0))
+        repo_frame.pack(fill=tk.X, pady=(2, 0))
 
         var_repo = tk.StringVar(value=self.core.settings.get("github_repo", DEFAULT_GITHUB_REPO))
         entry_repo = tk.Entry(repo_frame, textvariable=var_repo, font=("Segoe UI", 9), fg=COLOR_TEXT, bg=COLOR_ENTRY_BG,
@@ -1063,20 +1074,20 @@ class SteamSmartLauncherApp:
         def manual_check():
             self.core.settings["github_repo"] = var_repo.get().strip()
             self.core.save_settings()
-            btn_chk.config(state=tk.DISABLED, text="Verifica...")
+            btn_chk.config(state=tk.DISABLED, text=self.i18n("btn_checking"))
             def run():
                 res = self.updater.check_for_updates()
-                dlg.after(0, lambda: btn_chk.config(state=tk.NORMAL, text="🔍 Controlla"))
+                dlg.after(0, lambda: btn_chk.config(state=tk.NORMAL, text=self.i18n("btn_check_updates")))
                 if res.get("success"):
                     if res.get("has_update"):
                         dlg.after(0, lambda: self._show_update_notification_dialog(res))
                     else:
-                        dlg.after(0, lambda: messagebox.showinfo("Nessun Aggiornamento", f"Stai già utilizzando l'ultima versione disponibile (v{APP_VERSION})."))
+                        dlg.after(0, lambda: messagebox.showinfo("Info", f"You are running the latest version (v{APP_VERSION})."))
                 else:
-                    dlg.after(0, lambda: messagebox.showwarning("Controllo Aggiornamenti", res.get("error", "Errore sconosciuto.")))
+                    dlg.after(0, lambda: messagebox.showwarning("Update Check", res.get("error", "Unknown error.")))
             threading.Thread(target=run, daemon=True).start()
 
-        btn_chk = tk.Button(repo_frame, text="🔍 Controlla", font=("Segoe UI", 8, "bold"),
+        btn_chk = tk.Button(repo_frame, text=self.i18n("btn_check_updates"), font=("Segoe UI", 8, "bold"),
                             fg="#ffffff", bg=COLOR_CARD_HOVER, activebackground=COLOR_ACCENT,
                             relief=tk.FLAT, padx=10, pady=3, cursor="hand2", command=manual_check)
         btn_chk.pack(side=tk.RIGHT, padx=(6, 0))
@@ -1088,6 +1099,11 @@ class SteamSmartLauncherApp:
             self.core.settings["auto_check_updates"] = var_auto_update.get()
             self.core.settings["github_repo"] = var_repo.get().strip()
 
+            new_lang = lang_codes[combo_lang.current()]
+            lang_changed = (new_lang != self.i18n.lang)
+            self.core.settings["language"] = new_lang
+            self.i18n.set_language(new_lang)
+
             autostart_val = var_autostart.get()
             self.core.set_windows_autostart(autostart_val, start_minimized=var_start_minimized.get())
 
@@ -1098,20 +1114,44 @@ class SteamSmartLauncherApp:
                 self.core.settings["default_account_on_boot"] = ""
 
             self.core.save_settings()
-            self.show_toast("Impostazioni salvate!")
+            self.show_toast(self.i18n("toast_settings_saved"))
             dlg.destroy()
 
-        btn_save = tk.Button(dlg, text="💾 Salva Impostazioni", font=("Segoe UI", 10, "bold"),
+            if lang_changed:
+                self._reload_language_strings()
+
+        btn_save = tk.Button(dlg, text=self.i18n("btn_save_settings"), font=("Segoe UI", 10, "bold"),
                              fg="#ffffff", bg=COLOR_GREEN, activebackground=COLOR_GREEN_HOVER,
                              relief=tk.FLAT, padx=16, pady=6, cursor="hand2", command=save_and_close)
         btn_save.pack(pady=(0, 16))
+
+    def _reload_language_strings(self):
+        self.root.title(f"{self.i18n('app_title')} v{APP_VERSION}")
+        self.lbl_title.config(text=self.i18n("header_title"))
+        self.lbl_subtitle.config(text=self.i18n("header_subtitle"))
+        self.btn_settings.config(text=self.i18n("btn_settings"))
+        self.btn_refresh.config(text=self.i18n("btn_refresh"))
+        self.lbl_acc_title.config(text=self.i18n("accounts_section_title"))
+        self.lbl_games_title.config(text=self.i18n("games_section_title"))
+        self.btn_grid_view.config(text=self.i18n("btn_grid_view"))
+        self.btn_list_view.config(text=self.i18n("btn_list_view"))
+        self.btn_open_folder.config(text=self.i18n("btn_open_folder"))
+        self.btn_open_store.config(text=self.i18n("btn_open_store"))
+        self.lbl_lopt.config(text=self.i18n("launch_options_label"))
+        self.btn_create_shortcut.config(text=self.i18n("btn_create_shortcut"))
+        self.btn_launch_now.config(text=self.i18n("btn_launch_now"))
+        self.btn_create_all_folder.config(text=self.i18n("btn_create_all"))
+        self.btn_manage.config(text=self.i18n("btn_manage_shortcuts"))
+        self.lbl_status.config(text=self.i18n("status_ready", version=APP_VERSION))
+        self._render_filter_chips()
+        self.refresh_data()
 
     def on_window_close(self):
         if self.core.settings.get("close_to_tray", True):
             self.root.withdraw()
             if self.core.settings.get("show_notifications", True) and self.tray and self.tray.icon:
                 try:
-                    self.tray.icon.notify("L'applicazione è attiva nella barra delle applicazioni.", "Steam Smart Switcher")
+                    self.tray.icon.notify("Steam Smart Switcher is running in system tray.", "Steam Smart Switcher")
                 except Exception:
                     pass
         else:
@@ -1165,7 +1205,7 @@ def main():
                 core = SteamCore()
                 core.switch_account_and_launch(target_account=args.account, appid=args.appid, launch_args=args.args)
         except Exception as ex:
-            ctypes.windll.user32.MessageBoxW(0, f"Avviso Steam Launcher:\n\n{ex}", "Steam Smart Switcher", 0x30 | 0x0)
+            ctypes.windll.user32.MessageBoxW(0, f"Steam Smart Switcher:\n\n{ex}", "Steam Smart Switcher", 0x30 | 0x0)
             sys.exit(1)
         sys.exit(0)
 

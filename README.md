@@ -2,42 +2,45 @@
 
 <div align="center">
 
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
-![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg?logo=windows)
-![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?logo=python)
-![Release](https://img.shields.io/badge/Release-v1.0.0-5c7e10.svg)
+[![GitHub Release](https://img.shields.io/github/v/release/NobodySan97/SteamSmartSwitcher?style=flat-square&color=66c0f4)](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest)
+[![Total Downloads](https://img.shields.io/github/downloads/NobodySan97/SteamSmartSwitcher/total.svg?style=flat-square&logo=github&color=5c7e10)](https://github.com/NobodySan97/SteamSmartSwitcher/releases)
+[![Latest Downloads](https://img.shields.io/github/downloads/NobodySan97/SteamSmartSwitcher/latest/total.svg?style=flat-square&logo=github&color=66c0f4)](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg?style=flat-square&logo=windows)](https://github.com/NobodySan97/SteamSmartSwitcher)
 
-**The intelligent Steam account switcher: generates desktop shortcuts that switch Steam accounts and launch games in a single click.**
-
-[English Documentation](#-english) • [Documentazione in Italiano](#-italiano)
-
-</div>
+**The intelligent Steam multi-account switcher: creates desktop game shortcuts that automatically switch accounts and launch games in a single click.**
 
 ---
 
-# 🇬🇧 English
+### 🌐 Language / Lingua
+**English** • [🇮🇹 Leggi la documentazione in Italiano](README_IT.md)
+
+---
+
+</div>
 
 ## 🌟 Key Features
 
 - ⚡ **1-Click Smart Shortcut Routing**: Double-click any game shortcut created on your desktop: if you're not logged into the correct Steam account, Steam is automatically restarted and logged into the right account (zero password prompts), launching your game immediately.
-- 📦 **All-in-One Standalone Executable (`.exe`)**: No Python setup required for end users. The binary acts as a full modern GUI when opened normally and as an ultra-fast headless launcher when triggered from shortcuts.
+- 📦 **All-in-One Standalone Executable (`.exe`)**: No Python installation required for end users. The binary operates as a full GUI with dark Steam aesthetics when launched normally, and as an ultra-fast headless launcher (<15ms) when triggered from shortcuts.
 - 🎨 **Modern Steam Dark UI & Visual Assets**: Automatically detects all configured accounts, downloads and displays real Steam Community avatars, and renders game libraries in both Poster Grid and Detailed List views.
 - 👑 **License & 👨‍👩‍👧‍👦 Family Sharing Detection**: Automatically distinguishes games owned natively by the selected account from games shared across local profiles via Steam Family Sharing.
 - 🔔 **Windows System Tray Integration**: Minimizes cleanly to the taskbar notification area next to the Windows clock, featuring a right-click context menu for instant account switching and game launching.
 - ⚙️ **Per-Account Custom Launch Options**: Store tailored launch parameters (e.g. `-novid -high +exec smurf.cfg`) per account and game.
 - 🛡️ **Active Game & Steam Cloud Protection**: Prevents accidental account switches while a Steam game is running to safeguard savegames and cloud sync.
+- 🌍 **Multi-Language Support**: Complete interface translation with support for **English** and **Italian**.
 - 🔄 **Built-in GitHub Auto-Updater**: Detects new GitHub releases and updates itself with a single click.
 
 ---
 
 ## 📥 Download & Installation
 
-1. Download **`SteamSmartSwitcher.exe`** from the [GitHub Releases page](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest).
+1. Download the latest **`SteamSmartSwitcher.exe`** from the [GitHub Releases Page](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest).
 2. Move `SteamSmartSwitcher.exe` into a folder of your choice (e.g. `C:\Program Files\SteamSmartLauncher` or your Documents).
 3. Run `SteamSmartSwitcher.exe`.
 
 > [!TIP]
-> To launch the switcher automatically on PC boot, open **Settings ⚙️** inside the app and enable *"Start automatically with Windows"*.
+> To launch the switcher automatically on Windows startup, open **Settings ⚙️** inside the app and enable *"Start automatically when Windows boots"*.
 
 ---
 
@@ -92,83 +95,6 @@ The compiled binary will be located at `dist/SteamSmartSwitcher.exe`.
 
 ---
 
-# 🇮🇹 Italiano
+## 📄 License
 
-## 🌟 Caratteristiche Principali
-
-- ⚡ **Switch Automatico con Scorciatoia Desktop**: Fai doppio click sull'icona del gioco sul Desktop: se non sei loggato con l'account giusto, Steam viene riavviato e loggato automaticamente senza chiederti la password, avviando subito la partita.
-- 📦 **Tutto in un Singolo File Eseguibile (`.exe`)**: Zero configurazioni o installazioni esterne. L'app funziona come interfaccia grafica completa se aperta normalmente, o come launcher istantaneo da riga di comando se chiamata dalle scorciatoie.
-- 🎨 **Interfaccia Dark Steam con Cover e Avatar Reali**: Riconosce i tuoi account, scarica e mostra gli avatar della community Steam e le copertine ufficiali in formato poster verticale o vista a elenco dettagliata.
-- 👑 **Riconoscimento Licenze & 👨‍👩‍👧‍👦 Family Sharing**: Riconosce all'istante se un gioco appartiene al profilo selezionato o se proviene dal Family Sharing di un altro account presente sul PC.
-- 🔔 **Integrazione Barra delle Applicazioni (System Tray)**: Minimizza l'app vicino all'orologio di Windows, con menu contestuale con tasto destro per cambiare account o lanciare giochi al volo.
-- ⚙️ **Opzioni di Avvio Personalizzate per Account**: Imposta parametri di lancio personalizzati (es. `-novid -high +exec smurf.cfg`) memorizzati per singolo account.
-- 🛡️ **Protezione Partite in Corso & Salvataggi Cloud**: Blocca il cambio account accidentale se un gioco Steam è aperto, proteggendo da crash e perdite di dati.
-- 🔄 **Sistema di Auto-Update Integrato**: Notifica e scarica gli aggiornamenti direttamente dalle release di GitHub con 1 click.
-
----
-
-## 📥 Installazione & Download
-
-1. Scarica l'ultima versione di **`SteamSmartSwitcher.exe`** dalla [sezione Releases di GitHub](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest).
-2. Salva il file in una cartella a tua scelta (es. `C:\Programmi\SteamSmartLauncher` o nei tuoi Documenti).
-3. Avvia `SteamSmartSwitcher.exe`.
-
-> [!TIP]
-> Per avviare l'app automaticamente all'accensione del PC, apri le **Impostazioni ⚙️** nell'app e attiva la spunta *"Avvia automaticamente con Windows"*.
-
----
-
-## 🕹️ Come Funziona
-
-```
-                    [ Doppio Click su Scorciatoia Gioco ]
-                                      │
-                                      ▼
-                        [ SteamSmartSwitcher.exe ]
-                                      │
-                     Hai già l'account giusto loggato?
-                                 ╱           ╲
-                            SÌ  ╱             ╲  NO
-                               ╱               ╲
-                              ▼                 ▼
-                      Avvia il gioco     1. Chiudi Steam in sicurezza
-                                         2. Applica Registry & VDF
-                                         3. Riavvia Steam con l'account corretto
-                                         4. Lancia la partita!
-```
-
----
-
-## ⌨️ Scorciatoie da Tastiera
-
-| Tasto | Azione |
-|---|---|
-| `Ctrl + F` o `/` | Cerca rapidamente un gioco |
-| `Invio (Enter)` | Avvia il gioco selezionato |
-| `Esc` | Pulisce la ricerca o riduce a icona |
-| `F5` o `Ctrl + R` | Ricarica e scansiona account e libreria |
-| `Ctrl + ,` | Apre le Impostazioni |
-
----
-
-## 🛠️ Compilazione da Sorgente
-
-```bash
-# 1. Clona il repository
-git clone https://github.com/NobodySan97/SteamSmartSwitcher.git
-cd SteamSmartSwitcher
-
-# 2. Installa le dipendenze
-pip install -r requirements.txt
-
-# 3. Compila in singolo eseguibile standalone
-python -m PyInstaller --noconsole --onefile --name="SteamSmartSwitcher" --icon="C:\Program Files (x86)\Steam\Steam.exe" --clean main.py
-```
-
-L'eseguibile pronto si troverà nella cartella `dist/SteamSmartSwitcher.exe`.
-
----
-
-## 📄 Licenza
-
-Distribuito sotto licenza **MIT**. Consulta il file [`LICENSE`](LICENSE) per ulteriori dettagli.
+Distributed under the **MIT** License. See [`LICENSE`](LICENSE) for more information.
