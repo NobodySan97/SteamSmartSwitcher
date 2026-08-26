@@ -7,7 +7,7 @@ import threading
 import re
 import requests
 
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 DEFAULT_GITHUB_REPO = "NobodySan97/SteamSmartSwitcher"
 
 class Updater:
@@ -106,17 +106,26 @@ class Updater:
                     pass
             raise
 
-        curr_pid = os.getpid()
-        ps_update = update_file.replace("'", "''")
-        ps_target = target_file.replace("'", "''")
-        ps_update_cmd = (
-            f"Wait-Process -Id {curr_pid} -Timeout 15 -ErrorAction SilentlyContinue; "
-            f"Start-Sleep -Milliseconds 600; "
-            f"Move-Item -LiteralPath '{ps_update}' -Destination '{ps_target}' -Force; "
-            f"Start-Process -FilePath '{ps_target}'"
-        )
+        # Apply update natively on Windows without PowerShell or external dropper scripts
+        bak_file = target_file + ".old"
+        if os.path.exists(bak_file):
+            try:
+                os.remove(bak_file)
+            except Exception:
+                pass
 
-        flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-        subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps_update_cmd],
-                         creationflags=flags)
-        os._exit(0)
+        try:
+            os.rename(target_file, bak_file)
+            os.rename(update_file, target_file)
+            os.startfile(target_file)
+            os._exit(0)
+        except Exception:
+            # Fallback for non-frozen environments
+            if os.path.exists(update_file):
+                try:
+                    os.replace(update_file, target_file)
+                    os.startfile(target_file)
+                    os._exit(0)
+                except Exception:
+                    pass
+            raise

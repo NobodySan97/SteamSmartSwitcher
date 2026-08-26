@@ -217,8 +217,9 @@ class SteamCore:
                 return True
             time.sleep(0.4)
 
+        # Fallback termination using clean taskkill without PowerShell droppers
         try:
-            subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", "Stop-Process -Name steam -Force -ErrorAction SilentlyContinue"],
+            subprocess.run(["taskkill", "/F", "/IM", "steam.exe"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
             time.sleep(0.3)
@@ -570,16 +571,9 @@ class SteamCore:
             shortcut.Description = f"Avvia {game_name} con account {persona_name}"
             shortcut.Save()
             return shortcut_path
-        except Exception:
-            ps_target = target_exe.replace("'", "''")
-            ps_args = arguments.replace("'", "''")
-            ps_dir = self.base_dir.replace("'", "''")
-            ps_icon = f"{icon_source},0".replace("'", "''")
-            ps_link = shortcut_path.replace("'", "''")
-            ps_script = f"$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('{ps_link}'); $s.TargetPath = '{ps_target}'; $s.Arguments = '{ps_args}'; $s.WorkingDirectory = '{ps_dir}'; $s.IconLocation = '{ps_icon}'; $s.Save()"
-            subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
-                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
-            return shortcut_path
+        except Exception as e:
+            print(f"[CreateShortcut] Error creating shortcut via COM: {e}")
+            return None
 
     def create_all_shortcuts_for_account(self, account_name, persona_name, in_subfolder=True):
         desktop = os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")

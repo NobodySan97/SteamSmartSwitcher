@@ -1569,7 +1569,13 @@ def main():
     parser.add_argument("--appid", type=str, help="Steam App ID of the game to launch")
     parser.add_argument("--account", type=str, help="Steam account username")
     parser.add_argument("--args", type=str, default="", help="Custom launch arguments")
-    args, _ = parser.parse_known_args()
+    # Clean up any leftover update backup file
+    try:
+        _old_exe = (sys.executable if getattr(sys, 'frozen', False) else os.path.abspath("SteamSmartSwitcher.exe")) + ".old"
+        if os.path.exists(_old_exe):
+            os.remove(_old_exe)
+    except Exception:
+        pass
 
     # DUAL MODE: If --account is passed, run headless launcher mode!
     if args.account:
