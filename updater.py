@@ -91,7 +91,7 @@ class Updater:
                 total_size = int(r.headers.get('content-length', 0))
                 downloaded = 0
                 with open(update_file, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=4194304):  # 4 MB ultra-wide streaming buffer (max network throughput)
+                    for chunk in r.iter_content(chunk_size=16777216):  # 16 MB ultra-wide burst buffer (1-second download on Gigabit/Fiber)
                         if chunk:
                             f.write(chunk)
                             downloaded += len(chunk)
