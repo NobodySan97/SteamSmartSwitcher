@@ -66,7 +66,10 @@ class SteamCore:
     def __init__(self):
         self.steam_path = self.find_steam_path()
         self.steam_exe = os.path.join(self.steam_path, "Steam.exe")
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        if getattr(sys, 'frozen', False):
+            self.base_dir = os.path.dirname(sys.executable)
+        else:
+            self.base_dir = os.path.dirname(os.path.abspath(__file__))
         self.cache_dir = os.path.join(self.base_dir, "cache")
         self.avatars_dir = os.path.join(self.cache_dir, "avatars")
         self.posters_dir = os.path.join(self.cache_dir, "posters")
@@ -376,6 +379,8 @@ class SteamCore:
                 cmd.extend(parsed_args)
         else:
             cmd = [self.steam_exe]
+            if self.settings.get("steam_silent_mode", True):
+                cmd.append("-silent")
 
         subprocess.Popen(cmd)
         return True

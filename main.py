@@ -10,14 +10,17 @@ import subprocess
 import threading
 from PIL import Image, ImageTk, ImageDraw
 
-# Enable High-DPI Awareness (Per-Monitor V2 on Windows 10/11)
+# Enable High-DPI Awareness (Per-Monitor V2 on Windows 10/11, fallback to Per-Monitor V1 or System DPI)
 try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
 except Exception:
     try:
-        ctypes.windll.user32.SetProcessDPIAware()
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except Exception:
-        pass
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
 
 from steam_core import SteamCore
 from tray_manager import TrayManager
@@ -176,6 +179,18 @@ class SteamSmartLauncherApp:
         self.root.minsize(1020, 720)
         self.root.configure(bg=self.theme["bg"])
 
+        # High-DPI font scaling calibration
+        try:
+            dpi = ctypes.windll.user32.GetDpiForWindow(self.root.winfo_id()) if hasattr(ctypes.windll.user32, 'GetDpiForWindow') else None
+            if not dpi or dpi == 0:
+                hdc = ctypes.windll.user32.GetDC(0)
+                dpi = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)
+                ctypes.windll.user32.ReleaseDC(0, hdc)
+            if dpi and dpi > 0:
+                self.root.tk.call('tk', 'scaling', dpi / 72.0)
+        except Exception:
+            pass
+
         ico_file = os.path.join(self.core.base_dir, "assets", "icon.ico")
         if os.path.exists(ico_file):
             try:
@@ -212,6 +227,8 @@ class SteamSmartLauncherApp:
         self._resize_timer = None
         self._suppress_launch_opts_trace = False
         self.grid_cols = 4
+        self._scroll_containers = []
+        self._active_toast = None
 
         self.avatar_images = {}
         self.poster_images = {}
@@ -225,6 +242,7 @@ class SteamSmartLauncherApp:
 
         self._setup_styles()
         self._build_ui()
+        self._bind_shortcuts()
         self.refresh_data()
 
         if self.core.settings.get("auto_check_updates", True):
@@ -248,6 +266,11 @@ class SteamSmartLauncherApp:
                         foreground="#ffffff",
                         darkcolor=self.theme["border"],
                         lightcolor=self.theme["border"])
+        self.root.option_add("*TCombobox*Listbox.background", self.theme["entry_bg"])
+        self.root.option_add("*TCombobox*Listbox.foreground", self.theme["text"])
+        self.root.option_add("*TCombobox*Listbox.selectBackground", self.theme["card_selected"])
+        self.root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+        self.root.option_add("*TCombobox*Listbox.font", ("Segoe UI", 9))
 
     def _build_ui(self):
         # 1. Header Bar
@@ -460,6 +483,38 @@ class SteamSmartLauncherApp:
         self.lbl_status = tk.Label(self.root, text=self.i18n("status_ready", version=APP_VERSION), font=("Segoe UI", 8), fg=self.theme["text_muted"], bg=self.theme["bg"], anchor="w", padx=20, pady=2)
         self.lbl_status.pack(fill=tk.X, side=tk.BOTTOM)
 
+    def _bind_shortcuts(self):
+        self.root.bind("<Return>", self._on_enter_key)
+        self.root.bind("<KP_Enter>", self._on_enter_key)
+        self.root.bind("<Escape>", self._on_escape_key)
+        self.root.bind("<Control-f>", self._focus_search)
+        self.root.bind("<Control-F>", self._focus_search)
+        self.root.bind("<F5>", lambda e: self.refresh_data())
+
+    def _focus_search(self, event=None):
+        self.entry_search.focus_set()
+        self.entry_search.select_range(0, tk.END)
+        return "break"
+
+    def _on_enter_key(self, event=None):
+        focused = self.root.focus_get()
+        if isinstance(focused, tk.Button):
+            focused.invoke()
+            return
+        if self.selected_game and self.selected_account:
+            self.launch_game_now_action()
+
+    def _on_escape_key(self, event=None):
+        focused = self.root.focus_get()
+        if focused == self.entry_search:
+            if self.search_var.get():
+                self.search_var.set("")
+            else:
+                self.root.focus_set()
+        else:
+            if self.core.settings.get("close_to_tray", True):
+                self.on_window_close()
+
     def _create_scrollable_container(self, parent, is_games_container=False):
         container = tk.Frame(parent, bg=self.theme["bg"])
         container.pack(fill=tk.BOTH, expand=True)
@@ -467,6 +522,8 @@ class SteamSmartLauncherApp:
         canvas = tk.Canvas(container, bg=self.theme["bg"], highlightthickness=0)
         scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas, bg=self.theme["bg"])
+
+        self._scroll_containers.append((container, canvas, scrollable_frame))
 
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
@@ -539,7 +596,12 @@ class SteamSmartLauncherApp:
             btn.pack(side=tk.LEFT, padx=(0, 4))
 
     def show_toast(self, text, icon="✅"):
-        ToastNotification(self.root, text, self.theme, icon=icon)
+        if hasattr(self, '_active_toast') and self._active_toast and self._active_toast.winfo_exists():
+            try:
+                self._active_toast.destroy()
+            except Exception:
+                pass
+        self._active_toast = ToastNotification(self.root, text, self.theme, icon=icon)
 
     def refresh_data(self):
         self.set_status(self.i18n("status_scanning"))
@@ -586,6 +648,7 @@ class SteamSmartLauncherApp:
         dlg.configure(bg=self.theme["bg"])
         dlg.transient(self.root)
         dlg.grab_set()
+        dlg.bind("<Escape>", lambda e: dlg.destroy())
 
         lbl_t = tk.Label(dlg, text=self.i18n("update_available_header", version=latest), font=("Segoe UI", 13, "bold"), fg=self.theme["accent"], bg=self.theme["bg"])
         lbl_t.pack(anchor="w", padx=20, pady=(16, 8))
@@ -631,7 +694,7 @@ class SteamSmartLauncherApp:
                 try:
                     self.updater.download_and_apply_update(info.get("download_url"), on_progress=on_progress)
                 except Exception as ex:
-                    dlg.after(0, lambda: messagebox.showerror("Update Error", f"Failed to apply update:\n{ex}"))
+                    dlg.after(0, lambda: messagebox.showerror(self.i18n("update_error_title"), self.i18n("update_error_msg", error=str(ex))))
                     dlg.after(0, lambda: btn_update.config(state=tk.NORMAL, text=self.i18n("btn_update_now")))
 
             threading.Thread(target=run, daemon=True).start()
@@ -658,7 +721,7 @@ class SteamSmartLauncherApp:
             try:
                 img = Image.open(av_path).resize((32, 32), Image.Resampling.LANCZOS)
                 photo = ImageTk.PhotoImage(img)
-                self.avatar_images["header"] = photo
+                self._header_avatar_photo = photo
                 self.avatar_label_header.config(image=photo)
             except Exception:
                 pass
@@ -779,6 +842,7 @@ class SteamSmartLauncherApp:
         for widget in self.games_container.winfo_children():
             widget.destroy()
         self.game_cards.clear()
+        self.poster_images.clear()
 
         if not self.filtered_games:
             lbl_empty = tk.Label(self.games_container, text=self.i18n("no_games_found"), font=("Segoe UI", 9), fg=self.theme["text_muted"], bg=self.theme["bg"], pady=20)
@@ -800,6 +864,9 @@ class SteamSmartLauncherApp:
         grid_frame.pack(fill=tk.BOTH, expand=True)
 
         cols = self.grid_cols
+        for col_idx in range(cols):
+            grid_frame.grid_columnconfigure(col_idx, weight=1)
+
         for i, game in enumerate(self.filtered_games):
             appid = game["appid"]
             name = game["name"]
@@ -841,6 +908,7 @@ class SteamSmartLauncherApp:
             badge_color = self.theme["shared_bg"] if owner_info["is_shared"] else self.theme["owned_bg"]
             badge_txt = self.i18n("badge_shared_grid") if owner_info["is_shared"] else self.i18n("badge_owned_grid")
             lbl_own = tk.Label(badge_box, text=badge_txt, font=("Segoe UI", 7, "bold"), fg="#ffffff", bg=badge_color, padx=4, pady=1)
+            lbl_own.ignore_hover = True
             lbl_own.pack(side=tk.LEFT)
 
             short_title = name if len(name) <= 15 else name[:14] + "…"
@@ -883,12 +951,15 @@ class SteamSmartLauncherApp:
 
             badge_color = self.theme["shared_bg"] if owner_info["is_shared"] else self.theme["owned_bg"]
             lbl_own = tk.Label(info_box, text=owner_info["badge_text"], font=("Segoe UI", 8, "bold"), fg="#ffffff", bg=badge_color, padx=6, pady=2)
+            lbl_own.ignore_hover = True
             lbl_own.pack(side=tk.LEFT, padx=(0, 6))
 
             lbl_size = tk.Label(info_box, text=self.i18n("disk_space", size=size_str, drive=drive), font=("Segoe UI", 8), fg=self.theme["accent"], bg=self.theme["entry_bg"], padx=6, pady=2)
+            lbl_size.ignore_hover = True
             lbl_size.pack(side=tk.LEFT, padx=(0, 6))
 
             lbl_appid = tk.Label(info_box, text=f"ID: {appid}", font=("Segoe UI", 8), fg=self.theme["text_muted"], bg=self.theme["entry_bg"], padx=6, pady=2)
+            lbl_appid.ignore_hover = True
             lbl_appid.pack(side=tk.LEFT)
 
             if self.selected_game and str(self.selected_game["appid"]) == str(appid):
@@ -989,7 +1060,7 @@ class SteamSmartLauncherApp:
             p_name = self.selected_account["persona_name"]
             u_name = self.selected_account["account_name"]
             l_opts = self.launch_opts_var.get().strip()
-            opts_str = f" | Options: '{l_opts}'" if l_opts else ""
+            opts_str = self.i18n("preview_opts", opts=l_opts) if l_opts else ""
             self.lbl_preview.config(text=self.i18n("preview_ready", game=g_name, persona=p_name, user=u_name, opts=opts_str))
             self.btn_create_shortcut.config(state=tk.NORMAL)
             self.btn_launch_now.config(state=tk.NORMAL)
@@ -1009,7 +1080,12 @@ class SteamSmartLauncherApp:
 
     def _edit_account_tag(self, account_name):
         current_tag = self.core.get_account_tag(account_name)
-        new_tag = simpledialog.askstring("Tag / Note", f"Tag for @{account_name}\n(e.g. Main, Smurf, Co-op):", initialvalue=current_tag, parent=self.root)
+        new_tag = simpledialog.askstring(
+            self.i18n("tag_dlg_title"),
+            self.i18n("tag_dlg_prompt", account=account_name),
+            initialvalue=current_tag,
+            parent=self.root
+        )
         if new_tag is not None:
             self.core.set_account_tag(account_name, new_tag)
             self.refresh_data()
@@ -1024,7 +1100,7 @@ class SteamSmartLauncherApp:
         if not res:
             return
 
-        self.set_status(f"Switching to {account_name}...")
+        self.set_status(self.i18n("status_switching", account=account_name))
         def run():
             try:
                 with WindowsNamedMutex("Local\\SteamSmartLauncher_Switch_Lock", timeout_ms=15000):
@@ -1034,7 +1110,7 @@ class SteamSmartLauncherApp:
                     self.root.after(0, lambda: self.show_toast(self.i18n("toast_switch_done", account=account_name)))
             except Exception as e:
                 if getattr(self, '_is_running', False) and self.root.winfo_exists():
-                    self.root.after(0, lambda: messagebox.showerror("Switch Error", str(e)))
+                    self.root.after(0, lambda: messagebox.showerror(self.i18n("error_switch_title"), str(e)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -1042,7 +1118,7 @@ class SteamSmartLauncherApp:
         if self.selected_game and self.selected_game.get("full_dir"):
             self.core.open_game_directory(self.selected_game["full_dir"])
         else:
-            messagebox.showinfo("Info", "Directory not available.")
+            messagebox.showinfo("Info", self.i18n("dir_not_available"))
 
     def _on_open_store_page(self):
         if self.selected_game:
@@ -1063,7 +1139,7 @@ class SteamSmartLauncherApp:
             filename = os.path.basename(shortcut_path)
             self.show_toast(self.i18n("toast_shortcut_created", filename=filename), icon="⭐")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to create shortcut:\n{e}")
+            messagebox.showerror(self.i18n("error_launch_title"), self.i18n("error_create_shortcut", error=str(e)))
 
     def create_all_shortcuts_action(self):
         if not self.selected_account:
@@ -1081,7 +1157,7 @@ class SteamSmartLauncherApp:
             self.show_toast(self.i18n("toast_folder_created", count=len(created)), icon="📁")
             os.startfile(target_dir)
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to create folder:\n{e}")
+            messagebox.showerror(self.i18n("error_launch_title"), self.i18n("error_create_folder", error=str(e)))
 
     def launch_game_now_action(self):
         if not self.selected_game or not self.selected_account:
@@ -1089,7 +1165,7 @@ class SteamSmartLauncherApp:
 
         is_playing, active_appid = self.core.is_game_running()
         if is_playing and active_appid != int(self.selected_game["appid"]):
-            messagebox.showerror(self.i18n("game_running_title"), f"Another Steam game (ID: {active_appid}) is running.")
+            messagebox.showerror(self.i18n("game_running_title"), self.i18n("game_already_running", appid=active_appid))
             return
 
         appid = self.selected_game["appid"]
@@ -1106,7 +1182,7 @@ class SteamSmartLauncherApp:
                     self.root.after(0, lambda: self.show_toast(self.i18n("toast_launching", game=game_name, persona=persona_name), icon="🚀"))
             except Exception as e:
                 if getattr(self, '_is_running', False) and self.root.winfo_exists():
-                    self.root.after(0, lambda: messagebox.showerror("Launch Error", str(e)))
+                    self.root.after(0, lambda: messagebox.showerror(self.i18n("error_launch_title"), str(e)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -1119,6 +1195,7 @@ class SteamSmartLauncherApp:
         dlg.configure(bg=self.theme["bg"])
         dlg.transient(self.root)
         dlg.grab_set()
+        dlg.bind("<Escape>", lambda e: dlg.destroy())
 
         lbl_dlg_title = tk.Label(dlg, text=self.i18n("shortcuts_dlg_header"), font=("Segoe UI", 12, "bold"), fg=self.theme["accent"], bg=self.theme["bg"])
         lbl_dlg_title.pack(anchor="w", padx=16, pady=(16, 8))
@@ -1143,7 +1220,7 @@ class SteamSmartLauncherApp:
                 lbl_fn.pack(side=tk.LEFT)
 
                 def delete_sc(path=sc["path"], row_widget=item):
-                    if messagebox.askyesno("Delete", f"Delete shortcut:\n{os.path.basename(path)}?"):
+                    if messagebox.askyesno(self.i18n("confirm_delete_title"), self.i18n("confirm_delete_msg", filename=os.path.basename(path))):
                         try:
                             os.remove(path)
                             row_widget.destroy()
@@ -1170,6 +1247,7 @@ class SteamSmartLauncherApp:
         dlg.configure(bg=self.theme["bg"])
         dlg.transient(self.root)
         dlg.grab_set()
+        dlg.bind("<Escape>", lambda e: dlg.destroy())
 
         lbl_title = tk.Label(dlg, text=self.i18n("settings_header"), font=("Segoe UI", 13, "bold"), fg=self.theme["accent"], bg=self.theme["bg"])
         lbl_title.pack(anchor="w", padx=20, pady=(16, 12))
@@ -1282,9 +1360,9 @@ class SteamSmartLauncherApp:
                     if res.get("has_update"):
                         dlg.after(0, lambda: self._show_update_notification_dialog(res))
                     else:
-                        dlg.after(0, lambda: messagebox.showinfo("Info", f"You are running the latest version (v{APP_VERSION})."))
+                        dlg.after(0, lambda: messagebox.showinfo("Info", self.i18n("latest_version_info", version=APP_VERSION)))
                 else:
-                    dlg.after(0, lambda: messagebox.showwarning("Update Check", res.get("error", "Unknown error.")))
+                    dlg.after(0, lambda: messagebox.showwarning(self.i18n("update_check_title"), self.i18n("update_check_failed", error=res.get("error", "Unknown error."))))
             threading.Thread(target=run, daemon=True).start()
 
         btn_chk = tk.Button(repo_frame, text=self.i18n("btn_check_updates"), font=("Segoe UI", 8, "bold"),
@@ -1371,6 +1449,14 @@ class SteamSmartLauncherApp:
         self.entry_search.config(fg=self.theme["text"], bg=self.theme["entry_bg"], insertbackground=self.theme["accent"])
 
         self.games_scroll_container.config(bg=self.theme["bg"])
+        for cont, can, sf in getattr(self, '_scroll_containers', []):
+            if cont.winfo_exists():
+                cont.config(bg=self.theme["bg"])
+            if can.winfo_exists():
+                can.config(bg=self.theme["bg"])
+            if sf.winfo_exists():
+                sf.config(bg=self.theme["bg"])
+
         self.game_details_box.config(bg=self.theme["card"], highlightbackground=self.theme["border"])
         self.det_top.config(bg=self.theme["card"])
         self.lbl_selected_game_name.config(text=self.i18n("no_game_selected"), bg=self.theme["card"])
@@ -1397,6 +1483,7 @@ class SteamSmartLauncherApp:
 
     def _trim_memory(self):
         """Deep sleep memory trimmer: frees PIL objects, clears widgets, and flushes working set."""
+        self._header_avatar_photo = None
         self.avatar_images.clear()
         self.poster_images.clear()
         self.capsule_images.clear()
@@ -1431,7 +1518,7 @@ class SteamSmartLauncherApp:
             self._trim_memory()
             if self.core.settings.get("show_notifications", True) and self.tray and self.tray.icon:
                 try:
-                    self.tray.icon.notify("Steam Smart Switcher is running in system tray.", "Steam Smart Switcher")
+                    self.tray.icon.notify(self.i18n("tray_running_notification"), "Steam Smart Switcher")
                 except Exception:
                     pass
         else:

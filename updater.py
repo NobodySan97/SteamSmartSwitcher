@@ -91,7 +91,7 @@ class Updater:
                 total_size = int(r.headers.get('content-length', 0))
                 downloaded = 0
                 with open(update_file, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=65536):
+                    for chunk in r.iter_content(chunk_size=524288):  # 512 KB buffer for high-throughput TCP streaming
                         if chunk:
                             f.write(chunk)
                             downloaded += len(chunk)
@@ -107,11 +107,13 @@ class Updater:
             raise
 
         curr_pid = os.getpid()
+        ps_update = update_file.replace("'", "''")
+        ps_target = target_file.replace("'", "''")
         ps_update_cmd = (
             f"Wait-Process -Id {curr_pid} -Timeout 15 -ErrorAction SilentlyContinue; "
             f"Start-Sleep -Milliseconds 600; "
-            f"Move-Item -Path '{update_file}' -Destination '{target_file}' -Force; "
-            f"Start-Process -FilePath '{target_file}'"
+            f"Move-Item -LiteralPath '{ps_update}' -Destination '{ps_target}' -Force; "
+            f"Start-Process -FilePath '{ps_target}'"
         )
 
         flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0

@@ -102,7 +102,7 @@ class TrayManager:
             item(f"🎮 {_t('games_section_title')}", Menu(*game_items)),
             Menu.SEPARATOR,
             item(f"🖥️ {_t('tray_open')}", on_show, default=True),
-            item(f"📁 Desktop", on_open_desk),
+            item(f"📁 {_t('tray_desktop')}", on_open_desk),
             Menu.SEPARATOR,
             item(f"❌ {_t('tray_exit')}", on_exit)
         ]
@@ -132,6 +132,10 @@ class TrayManager:
                 from main import WindowsNamedMutex
                 with WindowsNamedMutex("Local\\SteamSmartLauncher_Switch_Lock", timeout_ms=15000):
                     active_user = self.core.get_current_auto_login_user()
+                    if not active_user:
+                        accounts = self.core.get_remembered_accounts()
+                        if accounts:
+                            active_user = accounts[0]["account_name"]
                     l_args = self.core.get_game_launch_options(appid, active_user)
                     self.core.switch_account_and_launch(active_user, appid, l_args)
             except Exception as ex:
