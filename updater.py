@@ -6,7 +6,7 @@ import subprocess
 import threading
 import requests
 
-APP_VERSION = "1.0.7"
+APP_VERSION = "1.0.8"
 DEFAULT_GITHUB_REPO = "NobodySan97/SteamSmartSwitcher"
 
 class Updater:
@@ -72,8 +72,13 @@ class Updater:
         if not download_url:
             raise ValueError("URL di download non valido per la nuova versione.")
 
-        update_file = os.path.join(self.base_dir, "SteamSmartSwitcher_update.exe")
-        target_file = os.path.join(self.base_dir, "SteamSmartSwitcher.exe")
+        if getattr(sys, 'frozen', False):
+            target_file = sys.executable
+        else:
+            target_file = os.path.join(self.base_dir, "SteamSmartSwitcher.exe")
+
+        target_dir = os.path.dirname(target_file)
+        update_file = os.path.join(target_dir, "SteamSmartSwitcher_update.exe")
 
         # Download with stream
         headers = {"User-Agent": f"SteamSmartSwitcher-v{self.current_version}"}
@@ -93,7 +98,7 @@ class Updater:
                         on_progress(pct, downloaded, total_size)
 
         # Generate atomic batch updater with bounded retry count
-        updater_bat = os.path.join(self.base_dir, "_apply_update.bat")
+        updater_bat = os.path.join(target_dir, "_apply_update.bat")
         bat_content = f"""@echo off
 set RETRY_COUNT=0
 timeout /t 2 /nobreak >nul
