@@ -215,8 +215,8 @@ class SteamCore:
             time.sleep(0.4)
 
         try:
-            # Tree-kill with direct binary invocation
-            subprocess.run(["taskkill", "/F", "/T", "/IM", "steam.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", "Stop-Process -Name steam -Force -ErrorAction SilentlyContinue"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
             time.sleep(0.3)
         except Exception:
@@ -544,28 +544,16 @@ class SteamCore:
             shortcut.Description = f"Avvia {game_name} con account {persona_name}"
             shortcut.Save()
             return shortcut_path
-        except Exception as e:
-            vbs_args = arguments.replace('"', '""')
-            vbs_script = f'''
-Set oWS = WScript.CreateObject("WScript.Shell")
-sLinkFile = "{shortcut_path}"
-Set oLink = oWS.CreateShortcut(sLinkFile)
-oLink.TargetPath = "{target_exe}"
-oLink.Arguments = "{vbs_args}"
-oLink.WorkingDirectory = "{self.base_dir}"
-oLink.IconLocation = "{icon_source},0"
-oLink.Description = "Avvia {game_name} con account {persona_name}"
-oLink.Save
-'''
-            with tempfile.NamedTemporaryFile("w", suffix=".vbs", delete=False) as tf:
-                tf.write(vbs_script)
-                tf_name = tf.name
-            try:
-                subprocess.run(f'cscript //Nologo "{tf_name}"', shell=True, check=True)
-                return shortcut_path
-            finally:
-                if os.path.exists(tf_name):
-                    os.remove(tf_name)
+        except Exception:
+            ps_target = target_exe.replace("'", "''")
+            ps_args = arguments.replace("'", "''")
+            ps_dir = self.base_dir.replace("'", "''")
+            ps_icon = f"{icon_source},0".replace("'", "''")
+            ps_link = shortcut_path.replace("'", "''")
+            ps_script = f"$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('{ps_link}'); $s.TargetPath = '{ps_target}'; $s.Arguments = '{ps_args}'; $s.WorkingDirectory = '{ps_dir}'; $s.IconLocation = '{ps_icon}'; $s.Save()"
+            subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            return shortcut_path
 
     def create_all_shortcuts_for_account(self, account_name, persona_name, in_subfolder=True):
         desktop = os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")

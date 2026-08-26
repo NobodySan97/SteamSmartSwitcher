@@ -4,9 +4,10 @@ import json
 import time
 import subprocess
 import threading
+import re
 import requests
 
-APP_VERSION = "1.1.6"
+APP_VERSION = "1.1.7"
 DEFAULT_GITHUB_REPO = "NobodySan97/SteamSmartSwitcher"
 
 class Updater:
@@ -61,7 +62,6 @@ class Updater:
             return {"success": False, "error": str(e)}
 
     def _is_newer_version(self, latest, current):
-        import re
         def parse_ver(v):
             nums = [int(x) for x in re.findall(r'\d+', str(v))]
             while len(nums) < 3:
@@ -70,28 +70,26 @@ class Updater:
         try:
             return parse_ver(latest) > parse_ver(current)
         except Exception:
-            return latest.strip().lower() != current.strip().lower()
+            return str(latest).strip().lower() != str(current).strip().lower()
 
-    def download_and_apply_update(self, download_url, on_progress=None):
-        if not download_url:
-            raise ValueError("URL di download non valido per la nuova versione.")
-
-        if getattr(sys, 'frozen', False):
+    def download_and_apply_update(self, download_url: str, on_progress=None):
+        """Downloads new executable in-place, spawns detached PowerShell updater, and restarts."""
+        is_frozen = getattr(sys, 'frozen', False)
+        if is_frozen:
             target_file = sys.executable
         else:
-            target_file = os.path.join(self.base_dir, "SteamSmartSwitcher.exe")
+            target_file = os.path.abspath("SteamSmartSwitcher.exe")
 
         target_dir = os.path.dirname(target_file)
-        update_file = os.path.join(target_dir, "SteamSmartSwitcher_update.exe")
+        update_file = os.path.join(target_dir, "SteamSmartSwitcher_new.exe")
 
-        # Download with stream and cleanup on failure
-        headers = {"User-Agent": f"SteamSmartSwitcher-v{self.current_version}"}
+        # Download with stream
+        headers = {"User-Agent": "SteamSmartSwitcher-App"}
         try:
-            with requests.get(download_url, headers=headers, stream=True, timeout=(10, 30)) as r:
+            with requests.get(download_url, headers=headers, stream=True, timeout=25) as r:
                 r.raise_for_status()
-                total_size = int(r.headers.get("content-length", 0))
+                total_size = int(r.headers.get('content-length', 0))
                 downloaded = 0
-
                 with open(update_file, "wb") as f:
                     for chunk in r.iter_content(chunk_size=65536):
                         if chunk:
@@ -108,37 +106,15 @@ class Updater:
                     pass
             raise
 
-        # Generate atomic batch updater with UTF-8 code page and process cleanup
-        updater_bat = os.path.join(target_dir, "_apply_update.bat")
         curr_pid = os.getpid()
-        bat_content = f"""@echo off
-@chcp 65001 >nul
-setlocal
-taskkill /F /PID {curr_pid} >nul 2>&1
-timeout /t 1 /nobreak >nul
-set RETRY_COUNT=0
-:RETRY
-move /y "{update_file}" "{target_file}" >nul 2>&1
-if errorlevel 1 (
-    set /a RETRY_COUNT+=1
-    if %RETRY_COUNT% GEQ 20 (
-        if exist "{update_file}" del /f /q "{update_file}" >nul 2>&1
-        (goto) 2>nul & del /f /q "%~f0"
-        exit /b 1
-    )
-    timeout /t 1 /nobreak >nul
-    goto RETRY
-)
-if exist "{update_file}" del /f /q "{update_file}" >nul 2>&1
-start "" "{target_file}"
-(goto) 2>nul & del /f /q "%~f0"
-"""
-        with open(updater_bat, "w", encoding="utf-8") as f:
-            f.write(bat_content)
+        ps_update_cmd = (
+            f"Wait-Process -Id {curr_pid} -Timeout 15 -ErrorAction SilentlyContinue; "
+            f"Start-Sleep -Milliseconds 600; "
+            f"Move-Item -Path '{update_file}' -Destination '{target_file}' -Force; "
+            f"Start-Process -FilePath '{target_file}'"
+        )
 
-        # Launch detached update script and terminate current process immediately
-        flags = 0
-        if os.name == 'nt':
-            flags = subprocess.CREATE_NO_WINDOW | 0x00000008  # DETACHED_PROCESS
-        subprocess.Popen(["cmd.exe", "/c", updater_bat], creationflags=flags, close_fds=True)
+        flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+        subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps_update_cmd],
+                         creationflags=flags)
         os._exit(0)
