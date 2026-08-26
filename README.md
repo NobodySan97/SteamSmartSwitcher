@@ -1,6 +1,8 @@
-# 🎮 Steam Smart Account Switcher & Game Launcher
-
 <div align="center">
+
+<img src="assets/icon.png" width="128" height="128" alt="Steam Smart Switcher Logo" />
+
+# 🎮 Steam Smart Account Switcher & Game Launcher
 
 [![GitHub Release](https://img.shields.io/github/v/release/NobodySan97/SteamSmartSwitcher?style=flat-square&color=66c0f4)](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/NobodySan97/SteamSmartSwitcher/total.svg?style=flat-square&logo=github&color=5c7e10)](https://github.com/NobodySan97/SteamSmartSwitcher/releases)

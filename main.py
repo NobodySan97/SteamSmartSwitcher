@@ -164,6 +164,20 @@ class SteamSmartLauncherApp:
         self.root.minsize(1020, 720)
         self.root.configure(bg=self.theme["bg"])
 
+        ico_file = os.path.join(self.core.base_dir, "assets", "icon.ico")
+        if os.path.exists(ico_file):
+            try:
+                self.root.iconbitmap(ico_file)
+            except Exception:
+                pass
+        png_file = os.path.join(self.core.base_dir, "assets", "icon.png")
+        if os.path.exists(png_file):
+            try:
+                self._app_icon_photo = ImageTk.PhotoImage(Image.open(png_file))
+                self.root.iconphoto(True, self._app_icon_photo)
+            except Exception:
+                pass
+
         self.tray = TrayManager(self.core, self)
         self.tray.start()
 

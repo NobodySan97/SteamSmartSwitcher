@@ -19,6 +19,14 @@ class TrayManager:
 
     def create_tray_image(self):
         """Creates or loads an icon for the system tray."""
+        custom_icon = os.path.join(self.core.base_dir, "assets", "icon.png")
+        if os.path.exists(custom_icon):
+            try:
+                img = Image.open(custom_icon)
+                return img.resize((64, 64), Image.Resampling.LANCZOS)
+            except Exception:
+                pass
+
         steam_ico = os.path.join(self.core.steam_path, "Steam.exe")
         if os.path.exists(steam_ico):
             try:

@@ -1,14 +1,16 @@
-# 🎮 Steam Smart Account Switcher & Game Launcher
-
 <div align="center">
 
-[![GitHub Release](https://img.shields.io/github/v/release/NobodySan97/SteamSmartSwitcher?style=flat-square&color=66c0f4)](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest)
-[![Download Totali](https://img.shields.io/github/downloads/NobodySan97/SteamSmartSwitcher/total.svg?style=flat-square&logo=github&color=5c7e10)](https://github.com/NobodySan97/SteamSmartSwitcher/releases)
-[![Download Ultima Release](https://img.shields.io/github/downloads/NobodySan97/SteamSmartSwitcher/latest/total.svg?style=flat-square&logo=github&color=66c0f4)](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest)
-[![Licenza](https://img.shields.io/badge/Licenza-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Piattaforma](https://img.shields.io/badge/Piattaforma-Windows%2010%20%7C%2011-0078D6.svg?style=flat-square&logo=windows)](https://github.com/NobodySan97/SteamSmartSwitcher)
+<img src="assets/icon.png" width="128" height="128" alt="Steam Smart Switcher Logo" />
 
-**Lo switcher di account Steam intelligente: crea icone sul Desktop che cambiano account ed avviano il gioco in 1 solo click.**
+# 🎮 Steam Smart Account Switcher & Game Launcher
+
+[![GitHub Release](https://img.shields.io/github/v/release/NobodySan97/SteamSmartSwitcher?style=flat-square&color=66c0f4)](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest)
+[![Total Downloads](https://img.shields.io/github/downloads/NobodySan97/SteamSmartSwitcher/total.svg?style=flat-square&logo=github&color=5c7e10)](https://github.com/NobodySan97/SteamSmartSwitcher/releases)
+[![Latest Downloads](https://img.shields.io/github/downloads/NobodySan97/SteamSmartSwitcher/latest/total.svg?style=flat-square&logo=github&color=66c0f4)](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg?style=flat-square&logo=windows)](https://github.com/NobodySan97/SteamSmartSwitcher)
+
+**Lo switcher intelligente per account multipli di Steam: crea collegamenti ai giochi che cambiano profilo e avviano la partita in un singolo click.**
 
 ---
 
