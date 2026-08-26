@@ -272,8 +272,6 @@ class SteamCore:
                 content = f.read()
 
             target_clean = target_account.strip().lower()
-            current_epoch = str(int(time.time()))
-
             def block_replacer(match):
                 steamid_header = match.group(1)
                 block_inner = match.group(2)
@@ -282,14 +280,7 @@ class SteamCore:
                 is_target = acc_match and (acc_match.group(1).strip().lower() == target_clean)
                 flag = "1" if is_target else "0"
 
-                if re.search(r'"AutoLogin"\s*"[^"]*"', block_inner, re.IGNORECASE):
-                    block_inner = re.sub(r'"AutoLogin"\s*"[^"]*"', f'"AutoLogin"\t\t"{flag}"', block_inner, flags=re.IGNORECASE)
-                else:
-                    block_inner += f'\n\t\t"AutoLogin"\t\t"{flag}"'
-
-                if re.search(r'"AllowAutoLogin"\s*"[^"]*"', block_inner, re.IGNORECASE):
-                    block_inner = re.sub(r'"AllowAutoLogin"\s*"[^"]*"', f'"AllowAutoLogin"\t\t"{flag}"', block_inner, flags=re.IGNORECASE)
-
+                # Update or set mostrecent / MostRecent
                 if re.search(r'"mostrecent"\s*"[^"]*"', block_inner, re.IGNORECASE):
                     block_inner = re.sub(r'"mostrecent"\s*"[^"]*"', f'"mostrecent"\t\t"{flag}"', block_inner, flags=re.IGNORECASE)
                 elif re.search(r'"MostRecent"\s*"[^"]*"', block_inner):
@@ -297,12 +288,19 @@ class SteamCore:
                 else:
                     block_inner += f'\n\t\t"mostrecent"\t\t"{flag}"'
 
-                # Update Timestamp for target user to enforce active priority
+                # Update AutoLogin / AllowAutoLogin if present
+                if re.search(r'"AutoLogin"\s*"[^"]*"', block_inner, re.IGNORECASE):
+                    block_inner = re.sub(r'"AutoLogin"\s*"[^"]*"', f'"AutoLogin"\t\t"{flag}"', block_inner, flags=re.IGNORECASE)
+
+                if re.search(r'"AllowAutoLogin"\s*"[^"]*"', block_inner, re.IGNORECASE):
+                    block_inner = re.sub(r'"AllowAutoLogin"\s*"[^"]*"', f'"AllowAutoLogin"\t\t"{flag}"', block_inner, flags=re.IGNORECASE)
+
+                # Ensure RememberPassword is 1 and WantsOfflineMode is 0 for target
                 if is_target:
-                    if re.search(r'"Timestamp"\s*"[^"]*"', block_inner, re.IGNORECASE):
-                        block_inner = re.sub(r'"Timestamp"\s*"[^"]*"', f'"Timestamp"\t\t"{current_epoch}"', block_inner, flags=re.IGNORECASE)
-                    else:
-                        block_inner += f'\n\t\t"Timestamp"\t\t"{current_epoch}"'
+                    if re.search(r'"RememberPassword"\s*"[^"]*"', block_inner, re.IGNORECASE):
+                        block_inner = re.sub(r'"RememberPassword"\s*"[^"]*"', f'"RememberPassword"\t\t"1"', block_inner, flags=re.IGNORECASE)
+                    if re.search(r'"WantsOfflineMode"\s*"[^"]*"', block_inner, re.IGNORECASE):
+                        block_inner = re.sub(r'"WantsOfflineMode"\s*"[^"]*"', f'"WantsOfflineMode"\t\t"0"', block_inner, flags=re.IGNORECASE)
 
                 return f'{steamid_header}{{{block_inner}\n\t}}'
 
@@ -366,7 +364,7 @@ class SteamCore:
 
         if is_running:
             self.close_steam_graceful()
-            time.sleep(0.15)
+            time.sleep(0.2)
 
         self.set_registry_auto_login(target_account)
         if not self.update_loginusers_vdf(target_account):
@@ -377,10 +375,7 @@ class SteamCore:
             if parsed_args:
                 cmd.extend(parsed_args)
         else:
-            if self.settings.get("steam_silent_mode", True):
-                cmd = [self.steam_exe, "-silent"]
-            else:
-                cmd = [self.steam_exe]
+            cmd = [self.steam_exe]
 
         subprocess.Popen(cmd)
         return True
@@ -519,18 +514,10 @@ class SteamCore:
         shortcut_filename = f"{clean_game_name} ({clean_persona}).lnk"
         shortcut_path = os.path.join(target_dir, shortcut_filename)
 
-        game_data = next((g for g in self.get_installed_games() if str(g["appid"]) == str(appid)), None)
-        icon_source = game_data["icon_path"] if game_data else None
-
-        if not icon_source or not os.path.exists(icon_source):
-    def create_desktop_shortcut(self, appid, game_name, account_name, persona_name, launch_args=""):
-        desktop = os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")
-        clean_game = re.sub(r'[\\/*?:"<>|]', "", game_name)
-        clean_persona = re.sub(r'[\\/*?:"<>|]', "", persona_name)
-        shortcut_name = f"{clean_game} ({clean_persona}).lnk"
-        shortcut_path = os.path.join(desktop, shortcut_name)
-
         icon_source = self.get_cached_icon_path(appid)
+        if not icon_source or not os.path.exists(icon_source):
+            game_data = next((g for g in self.get_installed_games() if str(g["appid"]) == str(appid)), None)
+            icon_source = game_data["icon_path"] if game_data else None
         if not icon_source or not os.path.exists(icon_source):
             icon_source = self.steam_exe
 
