@@ -100,6 +100,7 @@ class SteamCore:
             "close_to_tray": True,
             "show_notifications": True,
             "auto_check_updates": True,
+            "steam_silent_mode": True,
             "theme": "steam",
             "language": "it",
             "favorites": [],
@@ -362,7 +363,10 @@ class SteamCore:
             if parsed_args:
                 cmd.extend(parsed_args)
         else:
-            cmd = [self.steam_exe]
+            if self.settings.get("steam_silent_mode", True):
+                cmd = [self.steam_exe, "-silent"]
+            else:
+                cmd = [self.steam_exe]
 
         subprocess.Popen(cmd)
         return True

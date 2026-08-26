@@ -1158,6 +1158,7 @@ class SteamSmartLauncherApp:
         var_autostart = tk.BooleanVar(value=is_autostart)
         var_start_minimized = tk.BooleanVar(value=self.core.settings.get("start_minimized", False))
         var_close_to_tray = tk.BooleanVar(value=self.core.settings.get("close_to_tray", True))
+        var_steam_silent = tk.BooleanVar(value=self.core.settings.get("steam_silent_mode", True))
         var_notifications = tk.BooleanVar(value=self.core.settings.get("show_notifications", True))
         var_auto_update = tk.BooleanVar(value=self.core.settings.get("auto_check_updates", True))
 
@@ -1175,6 +1176,11 @@ class SteamSmartLauncherApp:
                                   variable=var_close_to_tray, font=("Segoe UI", 9), fg="#ffffff", bg=self.theme["card"],
                                   selectcolor=self.theme["entry_bg"], activebackground=self.theme["card"], activeforeground="#ffffff")
         cb_close.pack(anchor="w", pady=3)
+
+        cb_silent = tk.Checkbutton(box, text=self.i18n("setting_steam_silent"),
+                                   variable=var_steam_silent, font=("Segoe UI", 9), fg="#ffffff", bg=self.theme["card"],
+                                   selectcolor=self.theme["entry_bg"], activebackground=self.theme["card"], activeforeground="#ffffff")
+        cb_silent.pack(anchor="w", pady=3)
 
         cb_notif = tk.Checkbutton(box, text=self.i18n("setting_notifications"),
                                   variable=var_notifications, font=("Segoe UI", 9), fg="#ffffff", bg=self.theme["card"],
@@ -1266,6 +1272,7 @@ class SteamSmartLauncherApp:
         def save_and_close():
             self.core.settings["start_minimized"] = var_start_minimized.get()
             self.core.settings["close_to_tray"] = var_close_to_tray.get()
+            self.core.settings["steam_silent_mode"] = var_steam_silent.get()
             self.core.settings["show_notifications"] = var_notifications.get()
             self.core.settings["auto_check_updates"] = var_auto_update.get()
             self.core.settings["github_repo"] = var_repo.get().strip()
