@@ -4,8 +4,8 @@
 #
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 1, 7, 0),
-    prodvers=(1, 1, 7, 0),
+    filevers=(1, 1, 8, 0),
+    prodvers=(1, 1, 8, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -21,12 +21,12 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'NobodySan'),
             StringStruct('FileDescription', 'Steam Smart Switcher & Game Launcher'),
-            StringStruct('FileVersion', '1.1.7.0'),
+            StringStruct('FileVersion', '1.1.8.0'),
             StringStruct('InternalName', 'SteamSmartSwitcher'),
             StringStruct('LegalCopyright', 'Copyright (C) 2026 NobodySan'),
             StringStruct('OriginalFilename', 'SteamSmartSwitcher.exe'),
             StringStruct('ProductName', 'Steam Smart Switcher'),
-            StringStruct('ProductVersion', '1.1.7.0')
+            StringStruct('ProductVersion', '1.1.8.0')
           ]
         )
       ]

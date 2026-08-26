@@ -810,6 +810,24 @@ class SteamCore:
 
         return {"is_owner": False, "badge_text": _t("badge_shared_generic") if i18n else "👨‍👩‍👧‍👦 Family Sharing", "is_shared": True}
 
+    def get_cached_icon_path(self, appid):
+        """Returns the cached icon path or resolves from game manifest / Steam cache."""
+        custom_icon = os.path.join(self.icons_dir, f"{appid}.ico")
+        if os.path.exists(custom_icon):
+            return custom_icon
+
+        appinfo_icon = os.path.join(self.steam_path, "steam", "games", f"{appid}.ico")
+        if os.path.exists(appinfo_icon):
+            return appinfo_icon
+
+        for game in self.get_installed_games():
+            if str(game["appid"]) == str(appid):
+                if game.get("icon_path") and os.path.exists(game["icon_path"]):
+                    return game["icon_path"]
+                break
+
+        return self.steam_exe
+
     def resolve_game_icon(self, appid, name, installdir, library_path, url_icons=None):
         custom_icon = os.path.join(self.icons_dir, f"{appid}.ico")
         if os.path.exists(custom_icon):
