@@ -6,7 +6,7 @@ import subprocess
 import threading
 import requests
 
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.1.3"
 DEFAULT_GITHUB_REPO = "NobodySan97/SteamSmartSwitcher"
 
 class Updater:
@@ -97,27 +97,36 @@ class Updater:
                         pct = int((downloaded / total_size) * 100)
                         on_progress(pct, downloaded, total_size)
 
-        # Generate atomic batch updater with bounded retry count
+        # Generate atomic batch updater with process termination and cleanup
         updater_bat = os.path.join(target_dir, "_apply_update.bat")
+        curr_pid = os.getpid()
         bat_content = f"""@echo off
+setlocal
+taskkill /F /PID {curr_pid} >nul 2>&1
+timeout /t 1 /nobreak >nul
 set RETRY_COUNT=0
-timeout /t 2 /nobreak >nul
 :RETRY
 move /y "{update_file}" "{target_file}" >nul 2>&1
 if errorlevel 1 (
     set /a RETRY_COUNT+=1
-    if %RETRY_COUNT% GEQ 15 (
+    if %RETRY_COUNT% GEQ 20 (
+        if exist "{update_file}" del /f /q "{update_file}" >nul 2>&1
+        (goto) 2>nul & del /f /q "%~f0"
         exit /b 1
     )
     timeout /t 1 /nobreak >nul
     goto RETRY
 )
+if exist "{update_file}" del /f /q "{update_file}" >nul 2>&1
 start "" "{target_file}"
-(goto) 2>nul & del "%~f0"
+(goto) 2>nul & del /f /q "%~f0"
 """
         with open(updater_bat, "w", encoding="utf-8") as f:
             f.write(bat_content)
 
-        # Launch update script and exit
-        subprocess.Popen(["cmd.exe", "/c", updater_bat], creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
-        sys.exit(0)
+        # Launch detached update script and terminate current process immediately
+        flags = 0
+        if os.name == 'nt':
+            flags = subprocess.CREATE_NO_WINDOW | 0x00000008  # DETACHED_PROCESS
+        subprocess.Popen(["cmd.exe", "/c", updater_bat], creationflags=flags, close_fds=True)
+        os._exit(0)
