@@ -44,7 +44,7 @@ jobs:
       - name: Compile Single Standalone Executable with PyInstaller
         shell: pwsh
         run: |
-          python -m PyInstaller --noconsole --onefile --name="SteamSmartSwitcher" --icon="assets/icon.ico" --version-file="version_info.txt" --exclude-module=cryptography --exclude-module=bcrypt --exclude-module=numpy --exclude-module=matplotlib --exclude-module=scipy --clean main.py
+          python -m PyInstaller --noconsole --onefile --name="SteamSmartSwitcher" --icon="assets/icon.ico" --clean main.py
           Move-Item -Path "dist\SteamSmartSwitcher.exe" -Destination "SteamSmartSwitcher.exe" -Force
 
       - name: Create GitHub Release and Upload Binary
