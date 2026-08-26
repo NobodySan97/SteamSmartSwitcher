@@ -42,11 +42,13 @@
 
 ---
 
-## 📥 Installazione & Download
+## 📥 Download & Utilizzo Portable
+
+`SteamSmartSwitcher.exe` è **100% portable e standalone** (non richiede alcun setup di installazione e non appesantisce il sistema):
 
 1. Scarica l'ultima versione di **`SteamSmartSwitcher.exe`** dalla [sezione Releases di GitHub](https://github.com/NobodySan97/SteamSmartSwitcher/releases/latest).
-2. Salva il file in una cartella a tua scelta (es. `C:\Programmi\SteamSmartLauncher` o nei tuoi Documenti).
-3. Avvia `SteamSmartSwitcher.exe`.
+2. Salva `SteamSmartSwitcher.exe` in una cartella a tua scelta (es. `C:\Tools\SteamSmartSwitcher` o nei tuoi Documenti).
+3. Fai doppio click su `SteamSmartSwitcher.exe` per avviarlo. Fatto!
 
 > [!TIP]
 > Per avviare l'app automaticamente all'accensione del PC, apri le **Impostazioni ⚙️** nell'app e attiva la spunta *"Avvia automaticamente con Windows"*.

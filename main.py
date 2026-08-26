@@ -87,7 +87,7 @@ class ToastNotification(tk.Frame):
 class ModernCard(tk.Frame):
     def __init__(self, parent, theme, on_click=None, **kwargs):
         self.theme = theme
-        super().__init__(parent, bg=theme["card"], highlightthickness=1, highlightbackground=theme["border"], **kwargs)
+        super().__init__(parent, bg=theme["card"], highlightthickness=1, highlightbackground=theme["border"], cursor="hand2", **kwargs)
         self.on_click = on_click
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
@@ -101,12 +101,12 @@ class ModernCard(tk.Frame):
         self.config(bg=bg, highlightbackground=border)
         self._propagate_bg(self, bg)
 
-    def _on_enter(self, e):
+    def _on_enter(self, e=None):
         if not self.is_selected:
             self.config(bg=self.theme["card_hover"], highlightbackground=self.theme["accent"])
             self._propagate_bg(self, self.theme["card_hover"])
 
-    def _on_leave(self, e):
+    def _on_leave(self, e=None):
         if not self.is_selected:
             self.config(bg=self.theme["card"], highlightbackground=self.theme["border"])
             self._propagate_bg(self, self.theme["card"])
@@ -119,7 +119,10 @@ class ModernCard(tk.Frame):
         for child in widget.winfo_children():
             if getattr(child, 'ignore_hover', False) is False:
                 if isinstance(child, (tk.Label, tk.Frame)):
-                    child.config(bg=color)
+                    try:
+                        child.config(bg=color)
+                    except Exception:
+                        pass
                 self._propagate_bg(child, color)
 
     def set_selected(self, selected):
@@ -128,6 +131,23 @@ class ModernCard(tk.Frame):
         border = self.theme["accent"] if selected else self.theme["border"]
         self.config(bg=bg, highlightbackground=border, highlightthickness=2 if selected else 1)
         self._propagate_bg(self, bg)
+
+    def finalize_bindings(self):
+        """Recursively binds click and hover events to all non-button child widgets."""
+        self._bind_recursive(self)
+
+    def _bind_recursive(self, widget):
+        for child in widget.winfo_children():
+            if isinstance(child, tk.Button) or getattr(child, 'ignore_hover', False) is True:
+                continue
+            try:
+                child.config(cursor="hand2")
+            except Exception:
+                pass
+            child.bind("<Button-1>", self._on_click)
+            child.bind("<Enter>", self._on_enter)
+            child.bind("<Leave>", self._on_leave)
+            self._bind_recursive(child)
 
 
 class SteamSmartLauncherApp:
@@ -721,8 +741,9 @@ class SteamSmartLauncherApp:
             btn_profile.ignore_hover = True
             btn_profile.pack(side=tk.LEFT)
 
-            if self.selected_account and self.selected_account["account_name"] == acc_name:
+            if self.selected_account and self.selected_account["account_name"].lower() == acc_name.lower():
                 card.set_selected(True)
+            card.finalize_bindings()
 
     def _render_games(self):
         for widget in self.games_container.winfo_children():
@@ -795,8 +816,10 @@ class SteamSmartLauncherApp:
             lbl_t = tk.Label(card, text=short_title, font=("Segoe UI", 8, "bold"), fg="#ffffff", bg=self.theme["card"])
             lbl_t.pack(pady=(1, 0))
 
-            if self.selected_game and self.selected_game["appid"] == appid:
+            if self.selected_game and str(self.selected_game["appid"]) == str(appid):
                 card.set_selected(True)
+
+            card.finalize_bindings()
 
     def _render_games_list(self):
         for game in self.filtered_games:
@@ -837,8 +860,10 @@ class SteamSmartLauncherApp:
             lbl_appid = tk.Label(info_box, text=f"ID: {appid}", font=("Segoe UI", 8), fg=self.theme["text_muted"], bg=self.theme["entry_bg"], padx=6, pady=2)
             lbl_appid.pack(side=tk.LEFT)
 
-            if self.selected_game and self.selected_game["appid"] == appid:
+            if self.selected_game and str(self.selected_game["appid"]) == str(appid):
                 card.set_selected(True)
+
+            card.finalize_bindings()
 
     def _toggle_game_fav(self, appid, game):
         new_fav = self.core.toggle_favorite(appid)
@@ -887,14 +912,14 @@ class SteamSmartLauncherApp:
     def _select_account(self, acc):
         self.selected_account = acc
         for acc_name, card in self.account_cards.items():
-            card.set_selected(acc_name == acc["account_name"])
+            card.set_selected(acc_name.lower() == acc["account_name"].lower())
         self._apply_search_filter()
         self._update_preview()
 
     def _select_game(self, game):
         self.selected_game = game
         for appid, card in self.game_cards.items():
-            card.set_selected(appid == game["appid"])
+            card.set_selected(str(appid) == str(game["appid"]))
         self._update_preview()
 
     def _update_preview(self):
