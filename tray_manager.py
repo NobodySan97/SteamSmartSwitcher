@@ -111,23 +111,35 @@ class TrayManager:
     def _on_switch_account(self, account_name):
         def _worker():
             try:
-                self.core.switch_account_and_launch(account_name, appid=None)
-                if self.app and hasattr(self.app, "root"):
+                from main import WindowsNamedMutex
+                with WindowsNamedMutex("Local\\SteamSmartLauncher_Switch_Lock", timeout_ms=15000):
+                    self.core.switch_account_and_launch(account_name, appid=None)
+                if self.app and hasattr(self.app, "root") and getattr(self.app, "_is_running", False):
                     self.app.root.after(1500, self.app.refresh_data)
                 self.update_menu()
             except Exception as ex:
-                print(f"[TraySwitch] Error: {ex}")
+                if self.icon:
+                    try:
+                        self.icon.notify(str(ex), "Steam Smart Switcher")
+                    except Exception:
+                        pass
 
         threading.Thread(target=_worker, daemon=True).start()
 
     def _on_quick_launch_game(self, appid):
         def _worker():
             try:
-                active_user = self.core.get_current_auto_login_user()
-                l_args = self.core.get_game_launch_options(appid, active_user)
-                self.core.switch_account_and_launch(active_user, appid, l_args)
+                from main import WindowsNamedMutex
+                with WindowsNamedMutex("Local\\SteamSmartLauncher_Switch_Lock", timeout_ms=15000):
+                    active_user = self.core.get_current_auto_login_user()
+                    l_args = self.core.get_game_launch_options(appid, active_user)
+                    self.core.switch_account_and_launch(active_user, appid, l_args)
             except Exception as ex:
-                print(f"[TrayLaunch] Error: {ex}")
+                if self.icon:
+                    try:
+                        self.icon.notify(str(ex), "Steam Smart Switcher")
+                    except Exception:
+                        pass
 
         threading.Thread(target=_worker, daemon=True).start()
 

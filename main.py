@@ -38,35 +38,43 @@ class WindowsNamedMutex:
         self.handle = None
         self.acquired = False
 
+        self.k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        self.k32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+        self.k32.CreateMutexW.restype = wintypes.HANDLE
+        self.k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        self.k32.WaitForSingleObject.restype = wintypes.DWORD
+        self.k32.ReleaseMutex.argtypes = [wintypes.HANDLE]
+        self.k32.ReleaseMutex.restype = wintypes.BOOL
+        self.k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        self.k32.CloseHandle.restype = wintypes.BOOL
+
     def __enter__(self):
-        k32 = ctypes.windll.kernel32
-        self.handle = k32.CreateMutexW(None, False, self.primary_name)
-        if not self.handle and k32.GetLastError() == ERROR_ACCESS_DENIED:
-            self.handle = k32.CreateMutexW(None, False, self.fallback_name)
+        self.handle = self.k32.CreateMutexW(None, False, self.primary_name)
+        if not self.handle and ctypes.get_last_error() == ERROR_ACCESS_DENIED:
+            self.handle = self.k32.CreateMutexW(None, False, self.fallback_name)
 
         if not self.handle:
-            raise RuntimeError(f"Impossibile creare Mutex Windows: WinError {k32.GetLastError()}")
+            raise RuntimeError(f"Impossibile creare Mutex Windows: WinError {ctypes.get_last_error()}")
 
-        wait_res = k32.WaitForSingleObject(self.handle, self.timeout_ms)
+        wait_res = self.k32.WaitForSingleObject(self.handle, self.timeout_ms)
         if wait_res in (WAIT_OBJECT_0, WAIT_ABANDONED):
             self.acquired = True
             return self
         elif wait_res == WAIT_TIMEOUT:
-            k32.CloseHandle(self.handle)
+            self.k32.CloseHandle(self.handle)
             self.handle = None
             raise TimeoutError("Operazione bloccata: un altro cambio account è attualmente in corso.")
         else:
-            k32.CloseHandle(self.handle)
+            self.k32.CloseHandle(self.handle)
             self.handle = None
             raise RuntimeError(f"Attesa Mutex fallita con codice: 0x{wait_res:X}")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.handle:
-            k32 = ctypes.windll.kernel32
             if self.acquired:
-                k32.ReleaseMutex(self.handle)
+                self.k32.ReleaseMutex(self.handle)
                 self.acquired = False
-            k32.CloseHandle(self.handle)
+            self.k32.CloseHandle(self.handle)
             self.handle = None
 
 
@@ -677,6 +685,7 @@ class SteamSmartLauncherApp:
         for widget in self.accounts_container.winfo_children():
             widget.destroy()
         self.account_cards.clear()
+        self.avatar_images.clear()
 
         if not self.accounts:
             lbl_empty = tk.Label(self.accounts_container, text=self.i18n("no_accounts_found"),
@@ -785,6 +794,7 @@ class SteamSmartLauncherApp:
         for widget in self.games_container.winfo_children():
             widget.destroy()
         self.game_cards.clear()
+        self.poster_images.clear()
 
         grid_frame = tk.Frame(self.games_container, bg=self.theme["bg"])
         grid_frame.pack(fill=tk.BOTH, expand=True)
@@ -1017,11 +1027,14 @@ class SteamSmartLauncherApp:
         self.set_status(f"Switching to {account_name}...")
         def run():
             try:
-                self.core.switch_account_and_launch(account_name, appid=None)
-                self.root.after(1500, self.refresh_data)
-                self.root.after(0, lambda: self.show_toast(self.i18n("toast_switch_done", account=account_name)))
+                with WindowsNamedMutex("Local\\SteamSmartLauncher_Switch_Lock", timeout_ms=15000):
+                    self.core.switch_account_and_launch(account_name, appid=None)
+                if getattr(self, '_is_running', False) and self.root.winfo_exists():
+                    self.root.after(1500, self.refresh_data)
+                    self.root.after(0, lambda: self.show_toast(self.i18n("toast_switch_done", account=account_name)))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("Switch Error", str(e)))
+                if getattr(self, '_is_running', False) and self.root.winfo_exists():
+                    self.root.after(0, lambda: messagebox.showerror("Switch Error", str(e)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -1087,10 +1100,13 @@ class SteamSmartLauncherApp:
 
         def run():
             try:
-                self.core.switch_account_and_launch(account_name, appid, launch_args=launch_args)
-                self.root.after(0, lambda: self.show_toast(self.i18n("toast_launching", game=game_name, persona=persona_name), icon="🚀"))
+                with WindowsNamedMutex("Local\\SteamSmartLauncher_Switch_Lock", timeout_ms=15000):
+                    self.core.switch_account_and_launch(account_name, appid, launch_args=launch_args)
+                if getattr(self, '_is_running', False) and self.root.winfo_exists():
+                    self.root.after(0, lambda: self.show_toast(self.i18n("toast_launching", game=game_name, persona=persona_name), icon="🚀"))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("Launch Error", str(e)))
+                if getattr(self, '_is_running', False) and self.root.winfo_exists():
+                    self.root.after(0, lambda: messagebox.showerror("Launch Error", str(e)))
 
         threading.Thread(target=run, daemon=True).start()
 

@@ -6,7 +6,7 @@ import subprocess
 import threading
 import requests
 
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.4"
 DEFAULT_GITHUB_REPO = "NobodySan97/SteamSmartSwitcher"
 
 class Updater:
@@ -61,12 +61,16 @@ class Updater:
             return {"success": False, "error": str(e)}
 
     def _is_newer_version(self, latest, current):
+        import re
+        def parse_ver(v):
+            nums = [int(x) for x in re.findall(r'\d+', str(v))]
+            while len(nums) < 3:
+                nums.append(0)
+            return tuple(nums[:3])
         try:
-            def parse_ver(v):
-                return [int(p) for p in v.split(".") if p.isdigit()]
             return parse_ver(latest) > parse_ver(current)
         except Exception:
-            return latest.lower() != current.lower()
+            return latest.strip().lower() != current.strip().lower()
 
     def download_and_apply_update(self, download_url, on_progress=None):
         if not download_url:
@@ -80,27 +84,35 @@ class Updater:
         target_dir = os.path.dirname(target_file)
         update_file = os.path.join(target_dir, "SteamSmartSwitcher_update.exe")
 
-        # Download with stream
+        # Download with stream and cleanup on failure
         headers = {"User-Agent": f"SteamSmartSwitcher-v{self.current_version}"}
-        r = requests.get(download_url, headers=headers, stream=True, timeout=30)
-        r.raise_for_status()
+        try:
+            with requests.get(download_url, headers=headers, stream=True, timeout=(10, 30)) as r:
+                r.raise_for_status()
+                total_size = int(r.headers.get("content-length", 0))
+                downloaded = 0
 
-        total_size = int(r.headers.get("content-length", 0))
-        downloaded = 0
+                with open(update_file, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=65536):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if on_progress:
+                                pct = int((downloaded / total_size) * 100) if total_size > 0 else 0
+                                on_progress(pct, downloaded, total_size)
+        except Exception:
+            if os.path.exists(update_file):
+                try:
+                    os.remove(update_file)
+                except Exception:
+                    pass
+            raise
 
-        with open(update_file, "wb") as f:
-            for chunk in r.iter_content(chunk_size=65536):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if on_progress and total_size > 0:
-                        pct = int((downloaded / total_size) * 100)
-                        on_progress(pct, downloaded, total_size)
-
-        # Generate atomic batch updater with process termination and cleanup
+        # Generate atomic batch updater with UTF-8 code page and process cleanup
         updater_bat = os.path.join(target_dir, "_apply_update.bat")
         curr_pid = os.getpid()
         bat_content = f"""@echo off
+@chcp 65001 >nul
 setlocal
 taskkill /F /PID {curr_pid} >nul 2>&1
 timeout /t 1 /nobreak >nul

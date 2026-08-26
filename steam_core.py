@@ -17,6 +17,8 @@ import urllib.request
 # Win32 Toolhelp32 Constants for native process checking (<0.2ms, 0% CPU)
 TH32CS_SNAPPROCESS = 0x00000002
 
+k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+
 class PROCESSENTRY32W(ctypes.Structure):
     _fields_ = [
         ("dwSize", wintypes.DWORD),
@@ -31,23 +33,32 @@ class PROCESSENTRY32W(ctypes.Structure):
         ("szExeFile", ctypes.c_wchar * wintypes.MAX_PATH)
     ]
 
+k32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+k32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+k32.Process32FirstW.restype = wintypes.BOOL
+k32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+k32.Process32NextW.restype = wintypes.BOOL
+k32.CloseHandle.argtypes = [wintypes.HANDLE]
+k32.CloseHandle.restype = wintypes.BOOL
+
 def is_process_running_by_name(process_name: str) -> bool:
     """Zero-overhead Win32 snapshot process checker (<0.2ms, 0% CPU)."""
-    h_snap = ctypes.windll.kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    h_snap = k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
     if h_snap == -1 or not h_snap:
         return False
     entry = PROCESSENTRY32W()
     entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
     target = process_name.lower()
     try:
-        if ctypes.windll.kernel32.Process32FirstW(h_snap, ctypes.byref(entry)):
+        if k32.Process32FirstW(h_snap, ctypes.byref(entry)):
             while True:
                 if entry.szExeFile.lower() == target:
                     return True
-                if not ctypes.windll.kernel32.Process32NextW(h_snap, ctypes.byref(entry)):
+                if not k32.Process32NextW(h_snap, ctypes.byref(entry)):
                     break
     finally:
-        ctypes.windll.kernel32.CloseHandle(h_snap)
+        k32.CloseHandle(h_snap)
     return False
 
 
@@ -135,50 +146,52 @@ class SteamCore:
         return is_fav
 
     def save_settings(self):
+        temp_name = None
         try:
-            with open(self.settings_file, "w", encoding="utf-8") as f:
-                json.dump(self.settings, f, indent=2)
+            settings_dir = os.path.dirname(self.settings_file)
+            with tempfile.NamedTemporaryFile("w", dir=settings_dir, delete=False, encoding="utf-8") as tf:
+                json.dump(self.settings, tf, indent=2)
+                temp_name = tf.name
+            os.replace(temp_name, self.settings_file)
         except Exception as e:
             print(f"Error saving settings: {e}")
+            if temp_name and os.path.exists(temp_name):
+                try:
+                    os.remove(temp_name)
+                except Exception:
+                    pass
 
     def get_steam_active_info(self):
-        info = {"running_appid": 0, "steam_pid": 0, "active_user": 0}
+        res = {"steam_pid": 0, "active_user": "", "running_appid": 0}
         try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam\ActiveProcess") as key:
-                try:
-                    info["running_appid"], _ = winreg.QueryValueEx(key, "RunningAppID")
-                except Exception:
-                    pass
-                try:
-                    info["steam_pid"], _ = winreg.QueryValueEx(key, "pid")
-                except Exception:
-                    pass
-                try:
-                    info["active_user"], _ = winreg.QueryValueEx(key, "ActiveUser")
-                except Exception:
-                    pass
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam\ActiveProcess")
+            try:
+                res["steam_pid"], _ = winreg.QueryValueEx(key, "pid")
+            except Exception:
+                pass
+            try:
+                res["active_user"], _ = winreg.QueryValueEx(key, "ActiveUser")
+            except Exception:
+                pass
+            try:
+                res["running_appid"], _ = winreg.QueryValueEx(key, "RunningAppID")
+            except Exception:
+                pass
+            winreg.CloseKey(key)
         except Exception:
             pass
-        return info
+        return res
 
     def is_game_running(self):
-        # Stale registry protection: If Steam client is not running, no game is active!
+        """Returns (is_running, appid). Only evaluates if Steam is actively running to prevent stale registry false-positives."""
         if not self.is_steam_running():
             return False, 0
         info = self.get_steam_active_info()
-        return (info["running_appid"] != 0), info["running_appid"]
+        appid = info.get("running_appid", 0)
+        return (appid != 0), appid
 
     def is_steam_running(self):
-        info = self.get_steam_active_info()
-        pid = info.get("steam_pid")
-        if pid and pid > 0:
-            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
-            if handle:
-                exit_code = wintypes.DWORD()
-                ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
-                ctypes.windll.kernel32.CloseHandle(handle)
-                if exit_code.value == 259:  # STILL_ACTIVE
-                    return True
+        """Zero-overhead Win32 snapshot process checker (<0.2ms, immune to stale registry PID reuse)."""
         return is_process_running_by_name("steam.exe")
 
     def close_steam_graceful(self, max_wait_seconds=15):
@@ -202,8 +215,8 @@ class SteamCore:
             time.sleep(0.4)
 
         try:
-            # Tree-kill with CREATE_NO_WINDOW
-            subprocess.run("taskkill /F /T /IM steam.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            # Tree-kill with direct binary invocation
+            subprocess.run(["taskkill", "/F", "/T", "/IM", "steam.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
             time.sleep(0.3)
         except Exception:
@@ -356,7 +369,8 @@ class SteamCore:
             time.sleep(0.15)
 
         self.set_registry_auto_login(target_account)
-        self.update_loginusers_vdf(target_account)
+        if not self.update_loginusers_vdf(target_account):
+            raise RuntimeError(f"Impossibile aggiornare loginusers.vdf per l'account '{target_account}'.")
 
         if appid:
             cmd = [self.steam_exe, "-applaunch", str(appid)]
@@ -509,28 +523,23 @@ class SteamCore:
         icon_source = game_data["icon_path"] if game_data else None
 
         if not icon_source or not os.path.exists(icon_source):
-            icon_source = self.resolve_game_icon(
-                appid,
-                game_name,
-                game_data["installdir"] if game_data else "",
-                game_data["library"] if game_data else ""
-            )
+    def create_desktop_shortcut(self, appid, game_name, account_name, persona_name, launch_args=""):
+        desktop = os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")
+        clean_game = re.sub(r'[\\/*?:"<>|]', "", game_name)
+        clean_persona = re.sub(r'[\\/*?:"<>|]', "", persona_name)
+        shortcut_name = f"{clean_game} ({clean_persona}).lnk"
+        shortcut_path = os.path.join(desktop, shortcut_name)
 
+        icon_source = self.get_cached_icon_path(appid)
         if not icon_source or not os.path.exists(icon_source):
             icon_source = self.steam_exe
 
-        if getattr(sys, 'frozen', False):
+        target_exe = sys.executable if getattr(sys, 'frozen', False) else os.path.join(self.base_dir, "SteamSmartSwitcher.exe")
+        if not os.path.exists(target_exe):
             target_exe = sys.executable
-        else:
-            dist_exe = os.path.join(self.base_dir, "SteamSmartSwitcher.exe")
-            if os.path.exists(dist_exe):
-                target_exe = dist_exe
-            else:
-                target_exe = sys.executable.replace("python.exe", "pythonw.exe")
 
-        if target_exe.lower().endswith("pythonw.exe") or target_exe.lower().endswith("python.exe"):
-            main_script = os.path.join(self.base_dir, "main.py")
-            arguments = f'"{main_script}" --appid {appid} --account "{account_name}"'
+        if getattr(sys, 'frozen', False) or target_exe.endswith("SteamSmartSwitcher.exe"):
+            arguments = f'--appid {appid} --account "{account_name}"'
         else:
             arguments = f'--appid {appid} --account "{account_name}"'
 
@@ -549,12 +558,13 @@ class SteamCore:
             shortcut.Save()
             return shortcut_path
         except Exception as e:
+            vbs_args = arguments.replace('"', '""')
             vbs_script = f'''
 Set oWS = WScript.CreateObject("WScript.Shell")
 sLinkFile = "{shortcut_path}"
 Set oLink = oWS.CreateShortcut(sLinkFile)
 oLink.TargetPath = "{target_exe}"
-oLink.Arguments = "{arguments}"
+oLink.Arguments = "{vbs_args}"
 oLink.WorkingDirectory = "{self.base_dir}"
 oLink.IconLocation = "{icon_source},0"
 oLink.Description = "Avvia {game_name} con account {persona_name}"
