@@ -354,35 +354,56 @@ class SteamCore:
         target_clean = target_account.strip().lower()
         is_running = self.is_steam_running()
 
-        parsed_args = shlex.split(launch_args, posix=False) if launch_args else []
-
+        # If Steam is already running with the target account, launch directly via Windows Shell
         if is_running and current_user == target_clean:
             if appid:
-                if parsed_args:
-                    cmd = [self.steam_exe, "-applaunch", str(appid)] + parsed_args
-                    subprocess.Popen(cmd)
+                if launch_args:
+                    import urllib.parse
+                    encoded_args = urllib.parse.quote(launch_args.strip())
+                    try:
+                        os.startfile(f"steam://run/{appid}//{encoded_args}/")
+                    except Exception:
+                        os.startfile(f"steam://rungameid/{appid}")
                 else:
                     os.startfile(f"steam://rungameid/{appid}")
             return True
 
+        # If Steam is running with another account, close it gracefully
         if is_running:
             self.close_steam_graceful()
-            time.sleep(0.2)
+            time.sleep(0.3)
 
+        # Update Registry and loginusers.vdf
         self.set_registry_auto_login(target_account)
         if not self.update_loginusers_vdf(target_account):
             raise RuntimeError(f"Impossibile aggiornare loginusers.vdf per l'account '{target_account}'.")
 
-        if appid:
-            cmd = [self.steam_exe, "-applaunch", str(appid)]
-            if parsed_args:
-                cmd.extend(parsed_args)
-        else:
-            cmd = [self.steam_exe]
-            if self.settings.get("steam_silent_mode", True):
-                cmd.append("-silent")
+        # Launch Steam via Windows Shell to ensure trusted parent process (explorer.exe)
+        try:
+            os.startfile(self.steam_exe)
+        except Exception:
+            subprocess.Popen([self.steam_exe], creationflags=subprocess.DETACHED_PROCESS if os.name == 'nt' else 0)
 
-        subprocess.Popen(cmd)
+        # If a game was requested, wait for Steam process to start, then trigger game launch via Shell
+        if appid:
+            def _launch_game_delayed():
+                for _ in range(20):
+                    if self.is_steam_running():
+                        break
+                    time.sleep(0.5)
+                time.sleep(1.5)  # Let Steam client finish initial auth handshake
+                if launch_args:
+                    import urllib.parse
+                    encoded_args = urllib.parse.quote(launch_args.strip())
+                    try:
+                        os.startfile(f"steam://run/{appid}//{encoded_args}/")
+                    except Exception:
+                        os.startfile(f"steam://rungameid/{appid}")
+                else:
+                    os.startfile(f"steam://rungameid/{appid}")
+
+            threading.Thread(target=_launch_game_delayed, daemon=True).start()
+
         return True
 
     def get_account_tag(self, account_name):
