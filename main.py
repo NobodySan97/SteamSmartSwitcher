@@ -151,8 +151,12 @@ class ModernCard(tk.Frame):
 
 
 class SteamSmartLauncherApp:
-    def __init__(self, root, start_minimized=False):
+    def __init__(self, root, start_minimized=False, app_mutex=None, wakeup_event=None):
         self.root = root
+        self.h_app_mutex = app_mutex
+        self.h_wakeup_event = wakeup_event
+        self._is_running = True
+
         self.core = SteamCore()
         self.i18n = I18n(self.core.settings.get("language", "it"))
         self.theme_key = self.core.settings.get("theme", "steam")
@@ -177,6 +181,9 @@ class SteamSmartLauncherApp:
                 self.root.iconphoto(True, self._app_icon_photo)
             except Exception:
                 pass
+
+        if self.h_wakeup_event:
+            threading.Thread(target=self._listen_for_wakeup, daemon=True).start()
 
         self.tray = TrayManager(self.core, self)
         self.tray.start()
@@ -1414,15 +1421,38 @@ class SteamSmartLauncherApp:
         else:
             self.quit_completely()
 
+    def _listen_for_wakeup(self):
+        k32 = ctypes.windll.kernel32
+        while getattr(self, '_is_running', False) and self.h_wakeup_event:
+            res = k32.WaitForSingleObject(self.h_wakeup_event, 500)
+            if res == 0:  # WAIT_OBJECT_0
+                self.root.after(0, self.show_window)
+
     def show_window(self):
         self.root.deiconify()
         self.root.lift()
+        self.root.attributes('-topmost', True)
+        self.root.attributes('-topmost', False)
         self.root.focus_force()
         self.refresh_data()
 
     def quit_completely(self):
+        self._is_running = False
         if self.tray:
             self.tray.stop()
+        if self.h_wakeup_event:
+            try:
+                ctypes.windll.kernel32.CloseHandle(self.h_wakeup_event)
+            except Exception:
+                pass
+            self.h_wakeup_event = None
+        if self.h_app_mutex:
+            try:
+                ctypes.windll.kernel32.ReleaseMutex(self.h_app_mutex)
+                ctypes.windll.kernel32.CloseHandle(self.h_app_mutex)
+            except Exception:
+                pass
+            self.h_app_mutex = None
         self.root.destroy()
         sys.exit(0)
 
@@ -1449,9 +1479,34 @@ def main():
             sys.exit(1)
         sys.exit(0)
 
-    # Standard Mode: Launch GUI
+    # Standard GUI Mode: Single-Instance Enforcement
+    ERROR_ALREADY_EXISTS = 183
+    EVENT_MODIFY_STATE = 0x0002
+    k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    k32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    k32.CreateMutexW.restype = wintypes.HANDLE
+    k32.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    k32.OpenEventW.restype = wintypes.HANDLE
+    k32.CreateEventW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
+    k32.CreateEventW.restype = wintypes.HANDLE
+
+    h_app_mutex = k32.CreateMutexW(None, True, "Local\\SteamSmartSwitcher_GUI_SingleInstance")
+    last_err = ctypes.get_last_error()
+    if last_err == ERROR_ALREADY_EXISTS or not h_app_mutex:
+        # App is already running in background/tray! Signal it to wake up and show window.
+        h_wakeup_event = k32.OpenEventW(EVENT_MODIFY_STATE, False, "Local\\SteamSmartSwitcher_Wakeup_Event")
+        if h_wakeup_event:
+            k32.SetEvent(h_wakeup_event)
+            k32.CloseHandle(h_wakeup_event)
+        if h_app_mutex:
+            k32.CloseHandle(h_app_mutex)
+        sys.exit(0)
+
+    # Primary instance: create wakeup event
+    h_wakeup_event = k32.CreateEventW(None, False, False, "Local\\SteamSmartSwitcher_Wakeup_Event")
+
     root = tk.Tk()
-    app = SteamSmartLauncherApp(root, start_minimized=args.minimized)
+    app = SteamSmartLauncherApp(root, start_minimized=args.minimized, app_mutex=h_app_mutex, wakeup_event=h_wakeup_event)
     root.mainloop()
 
 if __name__ == "__main__":
