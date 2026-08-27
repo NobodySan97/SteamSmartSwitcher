@@ -7,7 +7,7 @@ import threading
 import re
 import requests
 
-APP_VERSION = "1.2.7"
+APP_VERSION = "1.2.8"
 DEFAULT_GITHUB_REPO = "NobodySan97/SteamSmartSwitcher"
 
 class Updater:
@@ -83,21 +83,39 @@ class Updater:
         target_dir = os.path.dirname(target_file)
         update_file = os.path.join(target_dir, "SteamSmartSwitcher_new.exe")
 
-        # Download with stream
+        # Download with adaptive dynamic stream buffer based on real-time network throughput
         headers = {"User-Agent": "SteamSmartSwitcher-App"}
         try:
-            with requests.get(download_url, headers=headers, stream=True, timeout=25) as r:
+            with requests.get(download_url, headers=headers, stream=True, timeout=30) as r:
                 r.raise_for_status()
                 total_size = int(r.headers.get('content-length', 0))
                 downloaded = 0
+
+                # Adaptive buffer parameters
+                current_chunk_size = 262144  # 256 KB probe start
+                min_chunk = 65536           # 64 KB minimum
+                max_chunk = 16777216        # 16 MB maximum for Gigabit/FTTH fiber
+
                 with open(update_file, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=16777216):  # 16 MB ultra-wide burst buffer (1-second download on Gigabit/Fiber)
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if on_progress:
-                                pct = int((downloaded / total_size) * 100) if total_size > 0 else 0
-                                on_progress(pct, downloaded, total_size)
+                    while True:
+                        t0 = time.time()
+                        chunk = r.raw.read(current_chunk_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        chunk_len = len(chunk)
+                        downloaded += chunk_len
+                        elapsed = time.time() - t0
+
+                        if on_progress:
+                            pct = int((downloaded / total_size) * 100) if total_size > 0 else 0
+                            on_progress(pct, downloaded, total_size)
+
+                        # Dynamically scale chunk size targeting ~100ms per UI progress tick
+                        if elapsed > 0 and chunk_len > 0:
+                            speed_bps = chunk_len / elapsed
+                            target_chunk = int(speed_bps * 0.1)
+                            current_chunk_size = max(min_chunk, min(max_chunk, target_chunk))
         except Exception:
             if os.path.exists(update_file):
                 try:
