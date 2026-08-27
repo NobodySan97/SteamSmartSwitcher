@@ -7,7 +7,7 @@ import threading
 import re
 import requests
 
-APP_VERSION = "1.2.6"
+APP_VERSION = "1.2.7"
 DEFAULT_GITHUB_REPO = "NobodySan97/SteamSmartSwitcher"
 
 class Updater:
@@ -117,14 +117,22 @@ class Updater:
         try:
             os.rename(target_file, bak_file)
             os.rename(update_file, target_file)
-            os.startfile(target_file)
+            try:
+                subprocess.Popen(["explorer.exe", target_file])
+            except Exception:
+                os.startfile(target_file)
+            time.sleep(0.6)
             os._exit(0)
         except Exception:
             # Fallback for non-frozen environments
             if os.path.exists(update_file):
                 try:
                     os.replace(update_file, target_file)
-                    os.startfile(target_file)
+                    try:
+                        subprocess.Popen(["explorer.exe", target_file])
+                    except Exception:
+                        os.startfile(target_file)
+                    time.sleep(0.6)
                     os._exit(0)
                 except Exception:
                     pass
