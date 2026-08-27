@@ -1584,7 +1584,7 @@ def main():
         try:
             with WindowsNamedMutex("Local\\SteamSmartLauncher_Switch_Lock", timeout_ms=15000):
                 core = SteamCore()
-                core.switch_account_and_launch(target_account=args.account, appid=args.appid, launch_args=args.args)
+                core.switch_account_and_launch(target_account=args.account, appid=args.appid, launch_args=args.args, wait_completion=True)
         except Exception as ex:
             ctypes.windll.user32.MessageBoxW(0, f"Steam Smart Switcher:\n\n{ex}", "Steam Smart Switcher", 0x30 | 0x0)
             sys.exit(1)
