@@ -7,7 +7,7 @@ import threading
 import re
 import requests
 
-APP_VERSION = "1.2.9"
+APP_VERSION = "1.3.0"
 DEFAULT_GITHUB_REPO = "NobodySan97/SteamSmartSwitcher"
 
 class Updater:

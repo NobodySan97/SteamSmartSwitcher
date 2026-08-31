@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 import subprocess
 import threading
+import webbrowser
 from PIL import Image, ImageTk, ImageDraw
 
 # Enable High-DPI Awareness (Per-Monitor V2 on Windows 10/11, fallback to Per-Monitor V1 or System DPI)
@@ -707,7 +708,7 @@ class SteamSmartLauncherApp:
         btn_gh = tk.Button(btn_row, text=self.i18n("btn_github_page"), font=("Segoe UI", 9),
                            fg=self.theme["text"], bg=self.theme["card"], activebackground=self.theme["card_hover"],
                            relief=tk.FLAT, padx=12, pady=6, cursor="hand2",
-                           command=lambda: os.startfile(info.get("release_url") or "https://github.com"))
+                           command=lambda: webbrowser.open(info.get("release_url") or "https://github.com"))
         btn_gh.pack(side=tk.LEFT)
 
         btn_skip = tk.Button(btn_row, text=self.i18n("btn_later"), font=("Segoe UI", 9),
@@ -1498,19 +1499,6 @@ class SteamSmartLauncherApp:
         self.game_cards.clear()
 
         gc.collect()
-
-        try:
-            h_proc = ctypes.windll.kernel32.GetCurrentProcess()
-            if hasattr(ctypes.windll.psapi, 'EmptyWorkingSet'):
-                ctypes.windll.psapi.EmptyWorkingSet.argtypes = [wintypes.HANDLE]
-                ctypes.windll.psapi.EmptyWorkingSet(h_proc)
-            else:
-                set_ws = ctypes.windll.kernel32.SetProcessWorkingSetSize
-                set_ws.argtypes = [wintypes.HANDLE, ctypes.c_size_t, ctypes.c_size_t]
-                set_ws.restype = wintypes.BOOL
-                set_ws(h_proc, ctypes.c_size_t(-1), ctypes.c_size_t(-1))
-        except Exception:
-            pass
 
     def on_window_close(self):
         if self.core.settings.get("close_to_tray", True):

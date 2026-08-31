@@ -14,51 +14,22 @@ from ctypes import wintypes
 from PIL import Image, ImageDraw
 import urllib.request
 
-# Win32 Toolhelp32 Constants for native process checking (<0.2ms, 0% CPU)
-TH32CS_SNAPPROCESS = 0x00000002
-
-k32 = ctypes.WinDLL('kernel32', use_last_error=True)
-
-class PROCESSENTRY32W(ctypes.Structure):
-    _fields_ = [
-        ("dwSize", wintypes.DWORD),
-        ("cntUsage", wintypes.DWORD),
-        ("th32ProcessID", wintypes.DWORD),
-        ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
-        ("th32ModuleID", wintypes.DWORD),
-        ("cntThreads", wintypes.DWORD),
-        ("th32ParentProcessID", wintypes.DWORD),
-        ("pcPriClassBase", ctypes.c_long),
-        ("dwFlags", wintypes.DWORD),
-        ("szExeFile", ctypes.c_wchar * wintypes.MAX_PATH)
-    ]
-
-k32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
-k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-k32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
-k32.Process32FirstW.restype = wintypes.BOOL
-k32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
-k32.Process32NextW.restype = wintypes.BOOL
-k32.CloseHandle.argtypes = [wintypes.HANDLE]
-k32.CloseHandle.restype = wintypes.BOOL
-
-def is_process_running_by_name(process_name: str) -> bool:
-    """Zero-overhead Win32 snapshot process checker (<0.2ms, 0% CPU)."""
-    h_snap = k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-    if h_snap == -1 or not h_snap:
-        return False
-    entry = PROCESSENTRY32W()
-    entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
-    target = process_name.lower()
+def is_steam_running_clean() -> bool:
+    """Checks if Steam is running using the official Steam Registry ActiveProcess key and PID verification."""
     try:
-        if k32.Process32FirstW(h_snap, ctypes.byref(entry)):
-            while True:
-                if entry.szExeFile.lower() == target:
-                    return True
-                if not k32.Process32NextW(h_snap, ctypes.byref(entry)):
-                    break
-    finally:
-        k32.CloseHandle(h_snap)
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam\ActiveProcess") as key:
+            pid, _ = winreg.QueryValueEx(key, "pid")
+            if pid and int(pid) > 0:
+                STILL_ACTIVE = 259
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+                if h:
+                    exit_code = wintypes.DWORD()
+                    ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(exit_code))
+                    ctypes.windll.kernel32.CloseHandle(h)
+                    return exit_code.value == STILL_ACTIVE
+    except Exception:
+        pass
     return False
 
 
@@ -194,8 +165,8 @@ class SteamCore:
         return (appid != 0), appid
 
     def is_steam_running(self):
-        """Zero-overhead Win32 snapshot process checker (<0.2ms, immune to stale registry PID reuse)."""
-        return is_process_running_by_name("steam.exe")
+        """Checks if Steam is actively running via official Steam registry ActiveProcess and live PID check."""
+        return is_steam_running_clean()
 
     def close_steam_graceful(self, max_wait_seconds=15):
         is_playing, appid = self.is_game_running()
