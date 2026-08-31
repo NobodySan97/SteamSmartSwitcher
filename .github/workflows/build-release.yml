@@ -28,7 +28,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install nuitka zstandard
 
       - name: Extract Release Version
         id: get_version
@@ -41,11 +41,10 @@ jobs:
           echo "VERSION=$ver" >> $env:GITHUB_ENV
           echo "Building version: $ver"
 
-      - name: Compile Single Standalone Executable with PyInstaller
+      - name: Compile Native C Standalone Executable with Nuitka
         shell: pwsh
         run: |
-          python -m PyInstaller --noupx --noconsole --onefile --name="SteamSmartSwitcher" --icon="assets/icon.ico" --clean main.py
-          Move-Item -Path "dist\SteamSmartSwitcher.exe" -Destination "SteamSmartSwitcher.exe" -Force
+          python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --include-data-dir=assets=assets --windows-icon-from-ico=assets/icon.ico --output-filename=SteamSmartSwitcher.exe --assume-yes-for-downloads main.py
 
       - name: Create GitHub Release and Upload Binary
         uses: softprops/action-gh-release@v2
