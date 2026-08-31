@@ -7,8 +7,12 @@ __pycache__/
 # Build & Dist output
 build/
 dist/
+*.build/
+*.dist/
+*.onefile-build/
 *.egg-info/
 *.exe
+*.xml
 
 # Local configuration & user data (sensitive)
 user_settings.json
